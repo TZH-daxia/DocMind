@@ -4,6 +4,7 @@ from typing import Any
 from app.workflow.state import AnalysisState
 
 ParseHandler = Callable[[AnalysisState], Awaitable[dict[str, Any]]]
+RenderHandler = Callable[[AnalysisState], Awaitable[dict[str, Any]]]
 VlmHandler = Callable[[AnalysisState], Awaitable[str]]
 ExtractHandler = Callable[[AnalysisState], Awaitable[list[dict[str, Any]]]]
 NormalizeHandler = Callable[[AnalysisState], Awaitable[list[dict[str, Any]]]]

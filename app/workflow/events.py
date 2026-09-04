@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Literal, Protocol
 
-NodeEventType = Literal["started", "succeeded", "failed"]
+NodeEventType = Literal["started", "succeeded", "failed", "skipped"]
 
 
 @dataclass(frozen=True)

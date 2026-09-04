@@ -5,6 +5,7 @@ const state = {
   events: new Map(),
 };
 const nodes = [
+  ["render_document", "文档转图片"],
   ["parse_with_mineru", "MinerU 文档解析"],
   ["read_images_with_vlm", "图片视觉识别"],
   ["extract_candidates", "字段候选提取"],
@@ -20,6 +21,7 @@ const elements = {
   fileCount: document.querySelector("#fileCount"),
   refreshButton: document.querySelector("#refreshButton"),
   runButton: document.querySelector("#runButton"),
+  runText: document.querySelector("#runText"),
   selectedName: document.querySelector("#selectedName"),
   selectedTaskId: document.querySelector("#selectedTaskId"),
   selectedStatus: document.querySelector("#selectedStatus"),
@@ -32,11 +34,16 @@ const elements = {
   copyButton: document.querySelector("#copyButton"),
   toast: document.querySelector("#toast"),
 };
+const nodeRows = new Map();
+const displayedStates = new Map();
+let flushTimer = null;
+let latestProgressEvent = null;
 document.addEventListener("DOMContentLoaded", () => {
   elements.fileInput.addEventListener("change", onFileSelected);
   elements.refreshButton.addEventListener("click", loadFiles);
   elements.runButton.addEventListener("click", runSelectedTask);
   elements.copyButton.addEventListener("click", copyResult);
+  initEventList();
   loadFiles();
 });
 async function loadFiles() {
@@ -60,23 +67,32 @@ async function onFileSelected(event) {
   if (!file) return;
   try {
     const task = await analysisApi.uploadFile(file, readContext());
-    showToast("文件已加入待运行列表", "success");
+    showToast("上传成功，已自动开始分析", "success");
     await loadFiles();
     await selectTask(task.task_id);
   } catch (error) {
     showToast(error.message, "error");
   }
 }
+function cancelEventFlush() {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  latestProgressEvent = null;
+}
 async function selectTask(taskId) {
   state.selectedTaskId = taskId;
   stopEvents();
+  cancelEventFlush();
   const item = state.files.find((file) => file.task_id === taskId);
   if (!item) return;
   elements.selectedName.textContent = item.original_name;
   elements.selectedTaskId.textContent = item.task_id;
   elements.runButton.disabled = item.status === "running";
+  initEventList();
+  renderEvents(state.events.get(taskId) || [], false);
   renderStatus(item.status, item.progress, item.current_stage);
-  renderEvents(state.events.get(taskId) || []);
   renderResult(null, item.status);
   if (item.result_available) {
     try {
@@ -95,8 +111,11 @@ async function runSelectedTask() {
   try {
     await analysisApi.runTask(state.selectedTaskId);
     state.events.set(state.selectedTaskId, []);
-    renderEvents([]);
+    cancelEventFlush();
+    initEventList();
+    renderEvents([], false);
     subscribeToTask(state.selectedTaskId);
+    setRunRunning(true);
     elements.runButton.disabled = true;
   } catch (error) {
     showToast(error.message, "error");
@@ -120,20 +139,43 @@ function handleTaskMessage(message) {
     const taskEvents = state.events.get(event.task_id) || [];
     taskEvents.push(event);
     state.events.set(event.task_id, taskEvents);
-    renderEvents(taskEvents);
-    renderStatus(null, event.progress, event.message);
+    latestProgressEvent = event;
+    scheduleEventFlush();
     return;
   }
   if (message.kind === "status") {
+    flushEvents();
     renderStatus(message.status, message.progress, message.current_stage);
     if (["ready", "needs_review", "failed"].includes(message.status)) {
       elements.runButton.disabled = false;
       stopEvents();
-      loadFiles();
-      if (message.status !== "failed") {
-        loadSelectedResult();
-      }
+      const finalStatus = message.status;
+      setTimeout(() => {
+        loadFiles();
+        if (finalStatus !== "failed") {
+          loadSelectedResult();
+        }
+      }, 2200);
     }
+  }
+}
+function scheduleEventFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushEvents();
+  }, 140);
+}
+function flushEvents() {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  const latest = latestProgressEvent;
+  latestProgressEvent = null;
+  renderEvents(state.events.get(state.selectedTaskId) || [], true);
+  if (latest) {
+    renderStatus(null, latest.progress, latest.message);
   }
 }
 async function loadSelectedResult() {
@@ -173,21 +215,54 @@ function renderStatus(status, progress, label) {
   if (status) {
     elements.selectedStatus.textContent = statusText(status);
     elements.selectedStatus.className = `status-pill ${statusClass(status)}`;
+    setRunRunning(status === "running");
   }
   const safeProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, safeProgress))}%`;
   elements.progressPercent.textContent = `${safeProgress}%`;
   elements.progressLabel.textContent = label || "等待运行";
 }
-function renderEvents(taskEvents) {
-  if (!taskEvents.length) {
-    elements.eventList.innerHTML = '<div class="empty-state">运行后将在这里显示节点事件</div>';
-    return;
-  }
-  const grouped = new Map(nodes.map(([key, label]) => [key, { key, label, state: "idle" }]));
+function setRunRunning(running) {
+  elements.runButton.classList.toggle("is-running", running);
+  elements.runText.textContent = running ? "运行中" : "运行";
+}
+function initEventList() {
+  elements.eventList.innerHTML = "";
+  nodeRows.clear();
+  displayedStates.clear();
+  nodes.forEach(([key, label]) => buildNodeRow(key, label));
+}
+function buildNodeRow(key, label) {
+  const row = document.createElement("div");
+  row.className = "event-row";
+  row.innerHTML = `
+    <span class="event-marker idle"></span>
+    <div class="event-copy">
+      <strong>${escapeHtml(label)}</strong>
+      <small></small>
+    </div>
+    <span class="event-value"></span>`;
+  elements.eventList.appendChild(row);
+  nodeRows.set(key, {
+    marker: row.querySelector(".event-marker"),
+    message: row.querySelector(".event-copy small"),
+    value: row.querySelector(".event-value"),
+  });
+  displayedStates.set(key, "idle");
+}
+function renderEvents(taskEvents, animate = false) {
+  const grouped = new Map(
+    nodes.map(([key, label]) => [key, { key, label, state: "idle", message: "", duration: null }]),
+  );
   taskEvents.forEach((event) => {
     if (!grouped.has(event.node_name)) {
-      grouped.set(event.node_name, { key: event.node_name, label: event.node_name, state: "idle" });
+      grouped.set(event.node_name, {
+        key: event.node_name,
+        label: event.node_name,
+        state: "idle",
+        message: "",
+        duration: null,
+      });
     }
     const target = grouped.get(event.node_name);
     target.state = event.event_type;
@@ -195,17 +270,36 @@ function renderEvents(taskEvents) {
     target.message = event.message;
     target.duration = event.duration_ms;
   });
-  elements.eventList.innerHTML = [...grouped.values()]
-    .map((item) => `
-      <div class="event-row">
-        <span class="event-marker ${item.state}"></span>
-        <div class="event-copy">
-          <strong>${escapeHtml(item.label)}</strong>
-          <small>${escapeHtml(item.message || "等待执行")}</small>
-        </div>
-        <span class="event-value">${item.duration ? `${item.duration} ms` : item.state === "succeeded" ? "完成" : ""}</span>
-      </div>`)
-    .join("");
+  let delayIndex = 0;
+  grouped.forEach((item) => {
+    if (!nodeRows.has(item.key)) {
+      buildNodeRow(item.key, item.label);
+    }
+    const row = nodeRows.get(item.key);
+    row.message.textContent = item.message || (item.state === "idle" ? "等待执行" : "—");
+    row.value.textContent = item.duration
+      ? `${item.duration} ms`
+      : item.state === "succeeded"
+        ? "完成"
+        : item.state === "skipped"
+          ? "已跳过"
+          : "";
+    if (displayedStates.get(item.key) === item.state) {
+      row.marker.className = `event-marker ${item.state}`;
+      return;
+    }
+    const delay = animate ? delayIndex * 200 : 0;
+    delayIndex += 1;
+    row.marker.style.transitionDelay = `${delay}ms`;
+    row.marker.style.animationDelay = `${delay}ms`;
+    row.marker.classList.remove("just-lit");
+    void row.marker.offsetWidth;
+    row.marker.className = `event-marker ${item.state}`;
+    if (animate && item.state !== "idle") {
+      row.marker.classList.add("just-lit");
+    }
+    displayedStates.set(item.key, item.state);
+  });
 }
 function renderResult(result, status) {
   if (!result) {

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agent.deepseek_extractor import DeepSeekExtractionAgent, ImageInput
+from app.collector.document_renderer import LocalDocumentRenderer
 from app.collector.mineru_client import MinerUClient
 from app.config import Settings
 from app.prompts.loader import (
@@ -50,6 +51,7 @@ class AnalysisService(WorkflowEventPublisher):
         self.settings = settings
         self.file_store = FileStore(settings)
         self.mineru = MinerUClient(settings, self.file_store)
+        self.renderer = LocalDocumentRenderer(self.file_store)
         self.deepseek = DeepSeekExtractionAgent(settings)
         self.system_prompt = load_po_order_extraction_prompt()
         self.vision_prompt = load_po_order_vision_prompt()
@@ -83,7 +85,7 @@ class AnalysisService(WorkflowEventPublisher):
         self._validate_content(Path(upload.filename), upload.content)
         task_id = self.file_store.new_task_id(upload.filename)
         document_id = self.file_store.new_document_id()
-        uploaded_path, _ = self.file_store.save_upload(upload, task_id, document_id)
+        uploaded_path, _ = self.file_store.save_upload(upload)
         status = {
             "task_id": task_id,
             "request_id": request_id,
@@ -115,9 +117,9 @@ class AnalysisService(WorkflowEventPublisher):
     def list_tasks(self) -> list[dict[str, Any]]:
         """返回可供前端选择的任务文件列表。"""
 
-        task_root = self.file_store.root / "analysis_tasks"
+        task_root = self.file_store.root / "parsed_documents"
         tasks: list[dict[str, Any]] = []
-        for status_path in task_root.glob("*/*_task_status.json"):
+        for status_path in task_root.glob("*/task_status.json"):
             try:
                 status = self.file_store.read_json(status_path)
             except (OSError, json.JSONDecodeError):
@@ -172,6 +174,21 @@ class AnalysisService(WorkflowEventPublisher):
         line_index = 0
         last_status = ""
         while True:
+            # 先推送已落盘的节点事件，再推送状态，避免最终状态先于节点事件到达
+            if log_path.exists():
+                lines = self.file_store.read_text(log_path, errors="replace").splitlines()
+                for line in lines[line_index:]:
+                    line_index += 1
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    payload = json.dumps(
+                        {"kind": "workflow", "event": event},
+                        ensure_ascii=False,
+                    )
+                    yield f"data: {payload}\n\n"
+
             status = self.get_task_status(task_id)
             status_snapshot = json.dumps(
                 {
@@ -188,20 +205,6 @@ class AnalysisService(WorkflowEventPublisher):
             if status_snapshot != last_status:
                 last_status = status_snapshot
                 yield f"data: {status_snapshot}\n\n"
-
-            if log_path.exists():
-                lines = self.file_store.read_text(log_path, errors="replace").splitlines()
-                for line in lines[line_index:]:
-                    line_index += 1
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    payload = json.dumps(
-                        {"kind": "workflow", "event": event},
-                        ensure_ascii=False,
-                    )
-                    yield f"data: {payload}\n\n"
 
             if (
                 status.get("status") in {"ready", "needs_review", "failed"}
@@ -240,8 +243,10 @@ class AnalysisService(WorkflowEventPublisher):
                 resolve_conflicts=self.resolve_conflicts,
                 calculate_confidence=self.calculate_confidence,
                 finalize_result=self.finalize_result,
+                render_document=self.render_document,
             ),
             publisher=self,
+            backend=self.settings.parse_backend,
         )
         try:
             await workflow.ainvoke(state)
@@ -283,6 +288,8 @@ class AnalysisService(WorkflowEventPublisher):
                         "current_stage": event.node_name,
                     }
                 )
+        elif event.event_type == "skipped":
+            pass
         else:
             status.update(
                 {
@@ -341,6 +348,29 @@ class AnalysisService(WorkflowEventPublisher):
             ],
         }
 
+    async def render_document(self, state: AnalysisState) -> dict[str, Any]:
+        """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
+
+        task_id = state["task_id"]
+        rendered = await asyncio.to_thread(
+            self.renderer.render,
+            Path(state["uploaded_path"]),
+            state["source_name"],
+            task_id,
+        )
+        self._update_status(
+            task_id,
+            rendered_converter=rendered.converter,
+            rendered_page_count=rendered.page_count,
+        )
+        return {
+            "parsed_directory": str(rendered.parsed_directory),
+            "markdown_path": str(rendered.markdown_path),
+            "metadata_path": str(rendered.metadata_path),
+            "batch_id": None,
+            "image_paths": [str(path) for path in rendered.image_paths],
+        }
+
     async def read_images_with_vlm(self, state: AnalysisState) -> str:
         """读取解析图片并生成视觉理解内容。"""
 
@@ -351,10 +381,8 @@ class AnalysisService(WorkflowEventPublisher):
             images,
         )
         parsed_directory = Path(state["parsed"]["parsed_directory"])
-        source_stem = Path(self.file_store.safe_filename(state["source_name"])).stem
-        vlm_path = parsed_directory / (
-            f"{state['document_id']}_{source_stem}_vlm_image_content.md"
-        )
+        source_stem = self.file_store.source_stem(state["source_name"])
+        vlm_path = parsed_directory / f"{source_stem}_vlm_image_content.md"
         self.file_store.write_text_atomic(vlm_path, vlm_content)
         self._update_status(
             task_id,
@@ -435,7 +463,7 @@ class AnalysisService(WorkflowEventPublisher):
             if candidate.field_key in allowed_keys
         ]
         self.file_store.write_json_atomic(
-            self.file_store.candidates_path(task_id),
+            self.file_store.candidates_path(task_id, self.file_store.source_stem(state["source_name"])),
             {"task_id": task_id, "candidates": [candidate.model_dump(mode="json") for candidate in all_candidates]},
         )
         return [candidate.model_dump(mode="json") for candidate in all_candidates]
@@ -449,7 +477,9 @@ class AnalysisService(WorkflowEventPublisher):
         ]
         normalized = self.candidate_normalizer.normalize(candidates)
         self.file_store.write_json_atomic(
-            self.file_store.normalized_candidates_path(state["task_id"]),
+            self.file_store.normalized_candidates_path(
+                state["task_id"], self.file_store.source_stem(state["source_name"])
+            ),
             {
                 "task_id": state["task_id"],
                 "candidates": [item.model_dump(mode="json") for item in normalized],
@@ -466,7 +496,9 @@ class AnalysisService(WorkflowEventPublisher):
         ]
         validated = self.candidate_validator.validate(candidates)
         self.file_store.write_json_atomic(
-            self.file_store.validated_candidates_path(state["task_id"]),
+            self.file_store.validated_candidates_path(
+                state["task_id"], self.file_store.source_stem(state["source_name"])
+            ),
             {
                 "task_id": state["task_id"],
                 "candidates": [item.model_dump(mode="json") for item in validated],
@@ -483,7 +515,9 @@ class AnalysisService(WorkflowEventPublisher):
         ]
         resolved = self.conflict_resolver.resolve(candidates)
         self.file_store.write_json_atomic(
-            self.file_store.resolved_fields_path(state["task_id"]),
+            self.file_store.resolved_fields_path(
+                state["task_id"], self.file_store.source_stem(state["source_name"])
+            ),
             {
                 "task_id": state["task_id"],
                 "fields": {

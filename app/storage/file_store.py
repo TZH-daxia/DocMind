@@ -11,14 +11,19 @@ from app.schemas.file import UploadedDocument
 
 
 class FileStore:
-    """管理配置数据根目录下的所有运行文件。"""
+    """管理配置数据根目录下的所有运行文件。
+
+    目录契约（仅三个）：
+    - uploaded_documents/<原始文件名>          用户上传的原件；
+    - parsed_documents/<task_id>/             单个任务的全部工作文件
+      （渲染图片、文本层、VLM 文档、任务状态、事件日志、中间候选 JSON）；
+    - analysis_results/<task_id>.json         最终业务结果。
+    """
 
     DIRECTORY_NAMES = (
         "uploaded_documents",
         "parsed_documents",
-        "rendered_pages",
         "analysis_results",
-        "analysis_tasks",
     )
 
     def __init__(self, settings: Settings) -> None:
@@ -62,17 +67,12 @@ class FileStore:
         safe_stem = re.sub(r"[^\w.-]+", "_", stem, flags=re.UNICODE).strip("._") or "document"
         return f"{safe_stem[:120]}{suffix}"
 
-    def save_upload(
-        self,
-        upload: UploadedDocument,
-        task_id: str,
-        document_id: str,
-    ) -> tuple[Path, bytes]:
-        """读取并保存一份上传文档。"""
+    def save_upload(self, upload: UploadedDocument) -> tuple[Path, bytes]:
+        """以原始文件名保存上传文档（同名覆盖）。"""
 
         content = upload.content
         filename = self.safe_filename(upload.filename or "document")
-        destination = self.task_dir("uploaded_documents", task_id) / f"{document_id}_{filename}"
+        destination = self.root / "uploaded_documents" / filename
         self.write_bytes_atomic(destination, content)
         return destination, content
 
@@ -122,11 +122,16 @@ class FileStore:
 
         return sorted(directory.rglob("*"))
 
+    def source_stem(self, source_name: str | None) -> str:
+        """返回源文件的安全文件名主干，用于任务内产物命名。"""
+
+        safe_name = self.safe_filename(source_name or "document")
+        return Path(safe_name).stem or "document"
+
     def find_task_by_request_id(self, request_id: str) -> dict[str, Any] | None:
         """根据幂等 key 查找已有任务快照。"""
 
-        task_root = self.root / "analysis_tasks"
-        for status_path in task_root.glob("*/*_task_status.json"):
+        for status_path in self.root.glob("parsed_documents/*/task_status.json"):
             try:
                 status = self.read_json(status_path)
             except (OSError, json.JSONDecodeError):
@@ -143,34 +148,40 @@ class FileStore:
     def task_status_path(self, task_id: str) -> Path:
         """返回任务状态文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_task_status.json"
+        return self.task_dir("parsed_documents", task_id) / "task_status.json"
 
     def result_path(self, task_id: str) -> Path:
         """返回最终业务结果文件路径。"""
 
-        return self.task_dir("analysis_results", task_id) / f"{task_id}_business_result.json"
+        return self.root / "analysis_results" / f"{task_id}.json"
 
-    def candidates_path(self, task_id: str) -> Path:
+    def candidates_path(self, task_id: str, source_stem: str) -> Path:
         """返回候选值文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_candidates.json"
+        return self.task_dir("parsed_documents", task_id) / f"{source_stem}_candidates.json"
 
-    def normalized_candidates_path(self, task_id: str) -> Path:
+    def normalized_candidates_path(self, task_id: str, source_stem: str) -> Path:
         """返回标准化候选值文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_normalized_candidates.json"
+        return (
+            self.task_dir("parsed_documents", task_id)
+            / f"{source_stem}_normalized_candidates.json"
+        )
 
-    def validated_candidates_path(self, task_id: str) -> Path:
+    def validated_candidates_path(self, task_id: str, source_stem: str) -> Path:
         """返回校验后候选值文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_validated_candidates.json"
+        return (
+            self.task_dir("parsed_documents", task_id)
+            / f"{source_stem}_validated_candidates.json"
+        )
 
-    def resolved_fields_path(self, task_id: str) -> Path:
+    def resolved_fields_path(self, task_id: str, source_stem: str) -> Path:
         """返回字段决议文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_resolved_fields.json"
+        return self.task_dir("parsed_documents", task_id) / f"{source_stem}_resolved_fields.json"
 
     def process_log_path(self, task_id: str) -> Path:
         """返回处理日志文件路径。"""
 
-        return self.task_dir("analysis_tasks", task_id) / f"{task_id}_process.log"
+        return self.task_dir("parsed_documents", task_id) / "process.log"

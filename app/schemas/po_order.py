@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 
 # 订单新增最终输出字段（12 个）。顺序即输出顺序：必填 8 个在前，选填 4 个在后。
 # 字段名已与 poOrder 订单新增模块（newOrderAdd.vue）核对对齐。
@@ -73,6 +73,22 @@ class PartyInfo(BaseModel):
     """托书中的发货人或收货人参考信息，只保留名称、地址、电话、邮箱。"""
 
     name: str | None = None
-    address: list[str] = Field(default_factory=list)
+    address: str | None = None
     phone: str | None = None
     email: str | None = None
+
+    @field_validator("address", mode="before")
+    @classmethod
+    def _merge_address_lines(cls, value: Any) -> Any:
+        """地址必须是单个完整字符串。
+
+        国外地址中的逗号/换行是同一地址的层级写法（街道、邮编、城市、国家），
+        不是多个地址；模型若仍输出列表，这里按顺序合并为一行。
+        """
+
+        if isinstance(value, list):
+            merged = ", ".join(str(item).strip() for item in value if str(item).strip())
+            return merged or None
+        if isinstance(value, str):
+            return value.strip() or None
+        return value

@@ -131,3 +131,72 @@ async def test_workflow_runs_vlm_when_mineru_returns_images() -> None:
         "calculate_confidence",
         "finalize_result",
     ]
+
+
+@pytest.mark.asyncio
+async def test_local_backend_renders_then_runs_vlm() -> None:
+    """local 后端：入口为本地渲染节点，渲染出的图片直接进入 VLM。"""
+    calls: list[str] = []
+
+    async def parse_fn(state: AnalysisState) -> dict[str, object]:
+        raise AssertionError("local 后端不应调用 MinerU 节点")
+
+    async def render_fn(state: AnalysisState) -> dict[str, object]:
+        calls.append("render")
+        return {
+            "parsed_directory": "rendered",
+            "image_paths": ["data/rendered_pages/task/page_001.png"],
+        }
+
+    async def vlm_fn(state: AnalysisState) -> str:
+        calls.append("vlm")
+        return "视觉内容"
+
+    async def extract_fn(state: AnalysisState) -> list[dict[str, object]]:
+        calls.append(f"extract:{state.get('vlm_image_content', '')}")
+        return []
+
+    async def normalize_fn(state: AnalysisState) -> list[dict[str, object]]:
+        return state.get("candidates", [])
+
+    async def validate_fn(state: AnalysisState) -> list[dict[str, object]]:
+        return state.get("normalized_candidates", [])
+
+    async def resolve_fn(state: AnalysisState) -> dict[str, dict[str, object]]:
+        return {}
+
+    async def confidence_fn(state: AnalysisState) -> float:
+        return 0.0
+
+    async def finalize_fn(state: AnalysisState) -> dict[str, object]:
+        return {"status": "done"}
+
+    publisher = EventCollector()
+    workflow = AnalysisGraph(
+        WorkflowHandlers(
+            parse_with_mineru=parse_fn,
+            read_images_with_vlm=vlm_fn,
+            extract_candidates=extract_fn,
+            normalize_candidates=normalize_fn,
+            validate_candidates=validate_fn,
+            resolve_conflicts=resolve_fn,
+            calculate_confidence=confidence_fn,
+            finalize_result=finalize_fn,
+            render_document=render_fn,
+        ),
+        publisher=publisher,
+        backend="local",
+    )
+    await workflow.ainvoke({"task_id": "task_local"})
+
+    assert calls == ["render", "vlm", "extract:视觉内容"]
+    assert [event.node_name for event in publisher.events if event.event_type == "started"] == [
+        "render_document",
+        "read_images_with_vlm",
+        "extract_candidates",
+        "normalize_candidates",
+        "validate_candidates",
+        "resolve_conflicts",
+        "calculate_confidence",
+        "finalize_result",
+    ]

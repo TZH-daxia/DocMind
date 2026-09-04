@@ -65,7 +65,7 @@
           <div class="process-actions">
             <span id="selectedStatus" class="status-pill idle">未选择任务</span>
             <button id="runButton" class="primary-button" disabled>
-              <span aria-hidden="true">▶</span>运行
+              <span class="run-icon" aria-hidden="true">▶</span><span id="runText">运行</span>
             </button>
           </div>
         </div>
@@ -86,9 +86,7 @@
           <strong id="progressPercent">0%</strong>
         </div>
 
-        <div id="eventList" class="event-list" aria-live="polite">
-          <div class="empty-state">运行后将在这里显示节点事件</div>
-        </div>
+        <div id="eventList" class="event-list" aria-live="polite"></div>
       </section>
 
       <section class="panel result-panel">

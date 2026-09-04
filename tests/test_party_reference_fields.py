@@ -16,7 +16,7 @@ def test_party_reference_fields_are_optional_and_in_schema() -> None:
             "shipper": FieldMetadata(
                 value={
                     "name": "Cleva International Trading Limited",
-                    "address": ["18/F, NAM WO HONG BUILDING", "SHEUNG WAN, HK"],
+                    "address": "18/F, NAM WO HONG BUILDING, SHEUNG WAN, HK",
                     "phone": "+852 1234 5678",
                     "email": "contact@example.com",
                 },
@@ -31,18 +31,18 @@ def test_party_reference_fields_are_optional_and_in_schema() -> None:
     )
 
     assert result.result["shipper"]["name"] == "Cleva International Trading Limited"
-    assert result.result["shipper"]["address"][0] == "18/F, NAM WO HONG BUILDING"
+    assert result.result["shipper"]["address"] == "18/F, NAM WO HONG BUILDING, SHEUNG WAN, HK"
     assert result.result["consignee"] is None
     assert list(result.result).index("shipper") > list(result.result).index("fid")
 
 
-def test_party_info_only_keeps_name_address_phone_email() -> None:
-    """PartyInfo 只保留名称、地址、电话、邮箱四个子字段。"""
+def test_party_info_merges_address_lines_into_single_string() -> None:
+    """国外地址的层级逗号是同一地址：列表输入合并为单个完整地址字符串。"""
 
     party = PartyInfo.model_validate(
         {
             "name": "Cleva International Trading Limited",
-            "address": ["18/F, NAM WO HONG BUILDING", "SHEUNG WAN, HK"],
+            "address": ["18/F, NAM WO HONG BUILDING", "148 WING LOK STREET", "SHEUNG WAN, HK"],
             "phone": "+852 1234 5678",
             "email": "contact@example.com",
         }
@@ -50,20 +50,20 @@ def test_party_info_only_keeps_name_address_phone_email() -> None:
 
     assert party.model_dump() == {
         "name": "Cleva International Trading Limited",
-        "address": ["18/F, NAM WO HONG BUILDING", "SHEUNG WAN, HK"],
+        "address": "18/F, NAM WO HONG BUILDING, 148 WING LOK STREET, SHEUNG WAN, HK",
         "phone": "+852 1234 5678",
         "email": "contact@example.com",
     }
 
 
 def test_party_reference_candidate_structure_is_validated() -> None:
-    """参与方字段只能接受统一对象结构。"""
+    """参与方字段只能接受统一对象结构，address 为单个字符串。"""
 
     valid = FieldCandidate(
         field_key="consignee",
         value={
             "name": "Grizzly Tools GmbH & Co. KG",
-            "address": ["Stockstadter StraBe 20", "Germany"],
+            "address": "Stockstadter StraBe 20, 63762 GroBostheim, Germany",
             "phone": None,
             "email": None,
         },

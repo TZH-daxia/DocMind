@@ -14,6 +14,9 @@ class ConflictResolver:
         "chinesepm",
     })
 
+    # 发货人/收货人对象：双源描述同一地址时空白差异不应触发冲突。
+    PARTY_FIELDS: frozenset[str] = frozenset({"shipper", "consignee"})
+
     def resolve(self, candidates: list[FieldCandidate]) -> dict[str, FieldMetadata]:
         """生成每个字段的最终候选元数据。"""
 
@@ -158,6 +161,12 @@ class ConflictResolver:
             if field_key in ConflictResolver.WHITESPACE_INSENSITIVE_FIELDS:
                 return re.sub(r"\s+", "", value).upper()
             return value.strip().upper()
+        if field_key in ConflictResolver.PARTY_FIELDS and isinstance(value, dict):
+            normalized = {
+                key: re.sub(r"\s+", " ", item).strip() if isinstance(item, str) else item
+                for key, item in value.items()
+            }
+            return json.dumps(normalized, ensure_ascii=False, sort_keys=True)
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
     @staticmethod

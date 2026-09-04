@@ -52,6 +52,29 @@ def test_port_rules_handle_bracketed_bilingual_labels() -> None:
     assert ("mdg", "FRANKFURT") in values
 
 
+def test_port_rules_reject_non_place_words_after_labels() -> None:
+    """标签后粘连的非地名（如费用栏“始发地其他费用”）不得成为港口候选。"""
+
+    text = "始发地其他费用 AIR FREIGHT CHARGES OTHER CHARGES AT ORIGIN"
+
+    candidates = extract_port_candidates(text, "doc_001")
+
+    assert candidates == []
+
+
+def test_port_rules_keep_iata_codes_and_reject_unknown_words() -> None:
+    """机场三字代码是合法地名；白名单外的普通词语被过滤。"""
+
+    text = "始发站:PVG 到达站:FRA 始发港:半导体开关元件"
+
+    candidates = extract_port_candidates(text, "doc_001")
+    values = {(item.field_key, item.value) for item in candidates}
+
+    assert ("sfg", "PVG") in values
+    assert ("mdg", "FRA") in values
+    assert all(value != "半导体开关元件" for _, value in values)
+
+
 def test_package_rules_extract_quantity_and_unit() -> None:
     candidates = extract_package_candidates("包装数量：1PLT", "doc_001")
 
@@ -109,6 +132,36 @@ def test_validator_rejects_address_as_port_and_freight_as_text() -> None:
     assert validated[1].status == "invalid"
     assert "地址" in validated[0].validation_errors[0]
     assert "不是数值" in validated[1].validation_errors[0]
+
+
+def test_validator_downgrades_unknown_port_place_to_needs_review() -> None:
+    """白名单外的模型港口候选降级人工复核；白名单内地名保持 normalized。"""
+
+    candidates = [
+        FieldCandidate(
+            field_key="sfg",
+            value="DACHAU",
+            raw_value="Dachau",
+            status="normalized",
+            confidence=0.9,
+            evidence=[Evidence(document_id="doc_001", quote="Destination: Dachau")],
+        ),
+        FieldCandidate(
+            field_key="mdg",
+            value="FRANKFURT",
+            raw_value="FRANKFURT",
+            status="normalized",
+            confidence=0.95,
+            evidence=[Evidence(document_id="doc_001", quote="Destination: FRANKFURT")],
+        ),
+    ]
+
+    validated = CandidateValidator().validate(candidates)
+
+    assert validated[0].status == "needs_review"
+    assert validated[0].value == "DACHAU"
+    assert "白名单" in validated[0].validation_errors[-1]
+    assert validated[1].status == "normalized"
 
 
 def test_resolver_deduplicates_same_value_and_keeps_conflicts() -> None:

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.schemas.analysis import FieldCandidate
 from app.schemas.po_order import PartyInfo
+from app.service.field_rules.port_whitelist import is_known_port_place
 
 
 class CandidateValidator:
@@ -30,6 +31,7 @@ class CandidateValidator:
         "inwageallinprice",
     })
     PARTY_FIELDS: ClassVar[frozenset[str]] = frozenset({"shipper", "consignee"})
+    PORT_FIELDS: ClassVar[frozenset[str]] = frozenset({"sfg", "mdg"})
 
     def validate(self, candidates: list[FieldCandidate]) -> list[FieldCandidate]:
         """校验候选并写入字段级错误。"""
@@ -51,6 +53,14 @@ class CandidateValidator:
                 "confirmed",
             }:
                 status = "invalid"
+            elif (
+                candidate.field_key in self.PORT_FIELDS
+                and isinstance(value, str)
+                and not is_known_port_place(value)
+            ):
+                # 模型给出的非白名单地名可能是真实小口岸：降级人工复核，不直接判无效。
+                errors.append("港口/城市地名不在已知白名单，需人工复核")
+                status = "needs_review"
             elif candidate.field_key in self.PARTY_FIELDS and isinstance(value, dict):
                 value = PartyInfo.model_validate(value).model_dump()
             validated.append(

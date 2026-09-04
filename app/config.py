@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api/v1"
 
+    parse_backend: str = "local"
+
     mineru_api_key: str | None = None
     mineru_base_url: str = "https://mineru.net/api/v4"
     mineru_model_version: str = "vlm"

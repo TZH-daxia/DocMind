@@ -11,7 +11,7 @@ const analysisApi = {
     formData.append("request_id", `ui-${Date.now()}-${crypto.randomUUID()}`);
     formData.append("schema_version", "po_order.v1");
     formData.append("context", JSON.stringify(context));
-    formData.append("auto_start", "false");
+    formData.append("auto_start", "true");
     return request(`${this.baseUrl}/tasks`, {
       method: "POST",
       body: formData,

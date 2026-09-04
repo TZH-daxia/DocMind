@@ -18,8 +18,14 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  overflow: hidden;
   color: var(--ink);
   background: var(--canvas);
   font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -35,16 +41,20 @@ button {
 }
 
 .app-shell {
-  min-height: 100vh;
-  padding: 0 24px 24px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px 16px;
 }
 
 .topbar {
   height: 76px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   max-width: 1680px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -130,7 +140,9 @@ button {
 
 .workspace {
   max-width: 1680px;
-  min-height: calc(100vh - 100px);
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0 auto;
   display: grid;
   grid-template-columns: 290px minmax(330px, 0.8fr) minmax(440px, 1.2fr);
@@ -276,6 +288,7 @@ select:focus {
   padding: 8px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .file-item {
@@ -396,9 +409,34 @@ select:focus {
 }
 
 .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   border: 1px solid var(--teal);
   color: #fff;
   background: var(--teal);
+}
+
+.primary-button.is-running .run-icon {
+  display: none;
+}
+
+.primary-button.is-running::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: button-spin 700ms linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .primary-button:hover:not(:disabled) {
@@ -479,6 +517,7 @@ select:focus {
   padding: 7px 10px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
   border-top: 1px solid var(--line);
 }
 
@@ -497,10 +536,34 @@ select:focus {
 .event-marker {
   flex: 0 0 auto;
   box-shadow: 0 0 0 4px #eef2f3;
+  transition: background-color 240ms ease, box-shadow 240ms ease;
 }
 
 .event-marker.idle {
   background: #c8d2d7;
+}
+
+.event-marker.skipped {
+  background: var(--surface);
+  box-shadow: 0 0 0 4px #eef2f3, inset 0 0 0 2px #a9b8c0;
+}
+
+@keyframes marker-pop {
+  0% {
+    transform: scale(0.5);
+  }
+
+  55% {
+    transform: scale(1.45);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.event-marker.just-lit {
+  animation: marker-pop 320ms ease both;
 }
 
 .event-copy {
@@ -560,6 +623,7 @@ select:focus {
   margin: 0;
   padding: 20px 21px;
   flex: 1;
+  min-height: 0;
   overflow: auto;
   background: #18252d;
   color: #d9e5e7;
@@ -613,6 +677,19 @@ select:focus {
 }
 
 @media (max-width: 860px) {
+  html,
+  body {
+    height: auto;
+  }
+
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+  }
+
   .app-shell {
     padding: 0 12px 12px;
   }

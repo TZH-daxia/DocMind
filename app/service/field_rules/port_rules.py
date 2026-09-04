@@ -2,6 +2,7 @@ import re
 
 from app.schemas.analysis import FieldCandidate
 from app.service.field_rules.common import evidence_from_match, plain_document_text
+from app.service.field_rules.port_whitelist import is_known_port_place
 
 # 捕获值中出现这些标签词时，说明匹配到的是表头文字或粘连标签，而不是港口名。
 PORT_VALUE_STOP_WORDS = (
@@ -50,6 +51,10 @@ def extract_port_candidates(text: str, document_id: str) -> list[FieldCandidate]
             raw_value = match.group(1).strip(" .,:：")
             cleaned_value = _clean_glued_label(raw_value)
             if not cleaned_value or _is_label_text(cleaned_value):
+                continue
+            # 标签后粘连的未必是地名（如费用栏“始发地其他费用”），
+            # 规则候选必须命中地名白名单，避免错误的规则值覆盖模型结果。
+            if not is_known_port_place(cleaned_value):
                 continue
             candidates.append(
                 FieldCandidate(

@@ -24,24 +24,25 @@
 9. 日期、金额、港口等字段值保留原文格式，不要改写为其它格式或换算单位。
 10. 数字字段必须从原文提取数字本身，不要把单位（KGS/CBM/PLT/PCS 等）拼进数值；原文有单位时可在证据中保留。
 11. 只有原文明确出现运费金额时才抽取 `inwageallinprice`；原文为 `COLLECT`、`PREPAID`、`运费到付` 等支付方式说明、不包含金额时，视为该字段无效，不输出候选。
-12. `shipper`、`consignee` 只能根据明确的 Shipper、Consignee、托运人、发货人、收货人标签提取；对象只允许包含 `name`、`address`、`phone`、`email` 四个子项，其余任何字段不要输出。
+12. `shipper`、`consignee` 只能根据明确的 Shipper、Consignee、托运人、发货人、收货人标签提取；对象只允许包含 `name`、`address`、`phone`、`email` 四个子项，其余任何字段不要输出。`address` 必须是单个完整地址字符串：原文地址中的逗号和换行是同一地址的层级写法（街道、门牌、邮编、城市、国家依次递进），不是多个地址；按原文顺序把这些层级合并为一行输出，不要拆成列表，也不要当作不同地址丢弃或只取其中一段。
 13. `englishpm`、`chinesepm` 只从原文出现的货名/中英文货物品名位置提取，不根据英文翻译生成中文品名。
 14. 如果存在图片视觉补充内容，它来自独立的 VLM 图片读取节点。将它作为辅助证据与两个 MinerU 文件交叉核对，不要把视觉模型的推断直接视为最终字段值。
+15. `sfg`、`mdg` 只能是真实存在的地名：港口名、城市名或机场三字代码（如 SHANGHAI、FRANKFURT、PVG）。费用栏、表头、声明栏里的普通词语（如"始发地其他费用"中的"其他费用"）不是地名，禁止抽取；对应栏位没有填写地名时，value 返回 null、status 用 `missing`，禁止从其它栏位凑数。
 
 ## 字段含义、样例名称与边界
 
 | key | 中文含义 | 必填 | 常见中文样例 | 常见英文样例 | 取值与边界 |
 | --- | --- | --- | --- | --- | --- |
-| `sfg` | 始发港 | 必填 | 装运港、起运港、始发地、始发港、始发站 | Departure、Airport of Departure、Port of Loading | 只取港口名称或代码，不取发货人地址 |
-| `mdg` | 目的港 | 必填 | 目的港、到达港、到达站、卸货港 | Final Destination、Airport of Destination、Port of Discharge | 只取港口名称或代码，不取收货人地址 |
+| `sfg` | 始发港 | 必填 | 装运港、起运港、始发地、始发港、始发站 | Departure、Airport of Departure、Port of Loading | 只取真实地名（港口/城市名或机场代码），必须是地名本身；栏位未填则 value=null、status=`missing`；不取费用栏、表头或地址文本 |
+| `mdg` | 目的港 | 必填 | 目的港、到达港、到达站、卸货港 | Final Destination、Airport of Destination、Port of Discharge | 只取真实地名（港口/城市名或机场代码），必须是地名本身；栏位未填则 value=null、status=`missing`；不取费用栏、表头或地址文本 |
 | `ybpiece` | 件数 | 必填 | 包装件数、件数、数量、托盘数量 | No. of Packages、Packages、Quantity、No of packages | 取整数件数；`1PLT`、`20CTN` 取数字 1/20 |
 | `ybweight` | 重量 | 必填 | 毛重、实际毛重 | G.W、Gross weight、Gross Weight | 取毛重数值，不取净重；`168KGS` 取 168 |
 | `ybvolume` | 体积 | 必填 | 体积 | Meas、Volume、VOL | 取体积数值；`0.78CBM` 取 0.78 |
 | `inwageallinprice` | 运费 | 必填 | 运费、价格 | Freight Charge | 仅取金额数值；COLLECT/PREPAID 等不抽 |
 | `hbrq` | 预计航班日期 | 必填 | 船期、预计航班日期、航班日期、到港日期 | Flight Date、Sailing Date | 保留原文日期；日期区间标 `needs_review` |
 | `fid` | 委托客户 | 必填 | — | — | 不使用托书内容，只能使用调用方 context |
-| `shipper` | 发货人 | 选填 | 托运人姓名及地址、发货人姓名及地址 | SHIPPER、Shipper's Name and Address | 对象只含名称/地址/电话/邮箱 |
-| `consignee` | 收货人 | 选填 | 收货人姓名及地址 | CONSIGNEE、Consignee's Name and Address | 对象只含名称/地址/电话/邮箱 |
+| `shipper` | 发货人 | 选填 | 托运人姓名及地址、发货人姓名及地址 | SHIPPER、Shipper's Name and Address | 对象只含名称/地址/电话/邮箱；address 为单个完整地址字符串（多级逗号合并为一行） |
+| `consignee` | 收货人 | 选填 | 收货人姓名及地址 | CONSIGNEE、Consignee's Name and Address | 对象只含名称/地址/电话/邮箱；address 为单个完整地址字符串（多级逗号合并为一行） |
 | `chinesepm` | 中文品名 | 选填 | 货名、中英文货物品名 | Goods、Description of Goods | 只取原文中文，可能多行 |
 | `englishpm` | 英文品名 | 选填 | 货名、中英文货物品名 | Goods、Description of Goods、Description | 保留原文，可能多行 |
 
@@ -50,7 +51,7 @@
 ```json
 {
   "name": "Cleva International Trading Limited",
-  "address": ["18/F, NAM WO HONG BUILDING", "148 WING LOK STREET", "SHEUNG WAN, HK"],
+  "address": "18/F, NAM WO HONG BUILDING, 148 WING LOK STREET, SHEUNG WAN, HK",
   "phone": "+852 1234 5678",
   "email": "contact@example.com"
 }
