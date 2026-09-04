@@ -1,0 +1,16 @@
+{
+  "source_file": "B-68046_托单.pdf",
+  "expected_fields": {
+    "sfg": "SHANGHAI",
+    "mdg": "FRANKFURT",
+    "ybpiece": 1,
+    "ybweight": 168,
+    "englishpm": "LAWN MOWER",
+    "chinesepm": "手推式电动割草机"
+  },
+  "conflict_fields": {
+    "ybvolume": [0.78, 1.2],
+    "hbrq": ["2026-09-28", "2026-10-05"]
+  },
+  "review_fields": ["inwageallinprice", "hscode"]
+}

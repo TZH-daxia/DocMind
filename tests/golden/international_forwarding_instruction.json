@@ -1,0 +1,12 @@
+{
+  "source_file": "托书20260826 R3 TEC.xls",
+  "expected_fields": {
+    "ybpiece": 4,
+    "ybweight": 74,
+    "ybvolume": 0.1828,
+    "englishpm": "SEMICONDUCTOR SWITCH",
+    "chinesepm": "半导体开关元件"
+  },
+  "review_fields": ["sfg", "mdg", "hbrq", "inwageallinprice", "hscode"],
+  "notes": "包装数量为 4 cartons，毛重为 74kg，体积为 0.1828CBM。HS 编码已不在最终输出字段中。"
+}

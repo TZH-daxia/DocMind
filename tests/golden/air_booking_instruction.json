@@ -1,0 +1,14 @@
+{
+  "source_file": "空运托书.doc",
+  "expected_fields": {
+    "sfg": "SHANGHAI",
+    "mdg": "FRANKFURT",
+    "ybpiece": 169,
+    "ybweight": 3109,
+    "ybvolume": 15.2,
+    "englishpm": "WOMEN KNITTED DRESS/WOMEN KNITTED CARDIGAN",
+    "chinesepm": "合纤针织女式连衣裙/化纤针织女式开襟衫"
+  },
+  "review_fields": ["hbrq", "inwageallinprice"],
+  "notes": "始发站、到达站和货物件重体来自托书正文及表格。HS 编码已不在最终输出字段中。"
+}

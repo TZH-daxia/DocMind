@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocMind 文档分析台</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <div class="brand-name">DocMind</div>
+          <div class="brand-subtitle">托书结构化分析台</div>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <span class="live-dot"></span>
+        <span>本地工作区</span>
+        <button id="refreshButton" class="icon-button" title="刷新文件列表" aria-label="刷新文件列表">↻</button>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <aside class="panel file-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">SOURCE FILES</span>
+            <h1>已上传文件</h1>
+          </div>
+          <span id="fileCount" class="count-badge">0</span>
+        </div>
+
+        <label class="upload-dropzone" for="fileInput">
+          <span class="dropzone-icon">＋</span>
+          <span>
+            <strong>添加托书文件</strong>
+            <small>PDF、DOC、XLS</small>
+          </span>
+        </label>
+        <input id="fileInput" type="file" accept=".pdf,.doc,.xls" hidden>
+
+        <div class="context-section">
+          <div class="section-label">运行上下文</div>
+          <div class="context-grid">
+            <label>委托客户 ID（fid）
+              <input id="client" type="number" placeholder="例如 1">
+            </label>
+          </div>
+        </div>
+
+        <div id="fileList" class="file-list" aria-live="polite">
+          <div class="empty-state">还没有上传文件</div>
+        </div>
+      </aside>
+
+      <section class="panel process-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">WORKFLOW TRACE</span>
+            <h1>运行过程</h1>
+          </div>
+          <div class="process-actions">
+            <span id="selectedStatus" class="status-pill idle">未选择任务</span>
+            <button id="runButton" class="primary-button" disabled>
+              <span aria-hidden="true">▶</span>运行
+            </button>
+          </div>
+        </div>
+
+        <div class="selected-file">
+          <span class="file-symbol">DOC</span>
+          <div>
+            <strong id="selectedName">请选择左侧文件</strong>
+            <span id="selectedTaskId">任务 ID 未加载</span>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div id="progressBar" class="progress-value" style="width: 0%"></div>
+        </div>
+        <div class="progress-summary">
+          <span id="progressLabel">等待运行</span>
+          <strong id="progressPercent">0%</strong>
+        </div>
+
+        <div id="eventList" class="event-list" aria-live="polite">
+          <div class="empty-state">运行后将在这里显示节点事件</div>
+        </div>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">OUTPUT JSON</span>
+            <h1>分析结果</h1>
+          </div>
+          <button id="copyButton" class="secondary-button" disabled title="复制当前 JSON">
+            复制 JSON
+          </button>
+        </div>
+        <div id="resultSummary" class="result-summary">
+          <span>尚未加载结果</span>
+        </div>
+        <pre id="resultJson" class="result-json"><code>{}</code></pre>
+      </section>
+    </section>
+
+    <div id="toast" class="toast" role="status"></div>
+  </main>
+  <script src="/static/api.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

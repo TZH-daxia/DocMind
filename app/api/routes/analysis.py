@@ -1,0 +1,145 @@
+import json
+from typing import Annotated, Any
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
+from fastapi.responses import StreamingResponse
+
+from app.api.dependencies import get_analysis_service
+from app.schemas.analysis import AnalysisContext
+from app.schemas.file import UploadedDocument
+from app.service.analysis_service import AnalysisService
+
+router = APIRouter(prefix="/analysis", tags=["analysis"])
+
+
+@router.post("/tasks", status_code=202)
+async def create_analysis_task(
+    background_tasks: BackgroundTasks,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    file: Annotated[UploadFile, File(...)],
+    request_id: Annotated[str, Form(...)],
+    schema_version: Annotated[str, Form()] = "po_order.v1",
+    context: Annotated[str, Form()] = "{}",
+    auto_start: Annotated[bool, Form()] = True,
+) -> dict[str, Any]:
+    """创建单份托书分析任务。"""
+
+    try:
+        parsed_context = AnalysisContext.model_validate(json.loads(context))
+        uploaded_document = UploadedDocument(
+            filename=file.filename or "",
+            content_type=file.content_type,
+            content=await file.read(),
+        )
+        task = await service.create_task(
+            uploaded_document,
+            request_id,
+            schema_version,
+            parsed_context,
+            auto_start=auto_start,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if auto_start and not task.get("idempotent_reuse"):
+        background_tasks.add_task(service.process_task, task["task_id"])
+    return task
+
+
+@router.get("/files")
+async def list_analysis_files(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回已上传文件及其任务状态。"""
+
+    return {"items": service.list_tasks()}
+
+
+@router.post("/tasks/{task_id}/run", status_code=202)
+async def run_analysis_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """手动启动一个分析任务。"""
+
+    try:
+        status = service.enqueue_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(service.process_task, task_id)
+    return {
+        "task_id": task_id,
+        "status": status.get("status"),
+        "message": "任务已开始运行",
+    }
+
+
+@router.get("/tasks/{task_id}/events")
+async def stream_analysis_events(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> StreamingResponse:
+    """通过 SSE 推送任务状态和节点事件。"""
+
+    try:
+        service.get_task_status(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+    return StreamingResponse(
+        service.iter_task_events(task_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/tasks/{task_id}")
+async def get_analysis_task(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回一个任务的状态快照。"""
+
+    try:
+        return service.get_task_status(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+
+
+@router.get("/tasks/{task_id}/result")
+async def get_analysis_result(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回一个已完成的分析结果。"""
+
+    try:
+        return service.get_result(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="RESULT_NOT_FOUND") from exc
+
+
+@router.get("/schemas/po_order/{schema_version}")
+async def get_po_order_schema(
+    schema_version: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回第一阶段目标字段 key 列表。"""
+
+    try:
+        return service.get_target_schema(schema_version)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="SCHEMA_NOT_FOUND") from exc

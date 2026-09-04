@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 运行时业务文件和本地分析产物
+data/*
+!data/.gitkeep
+
+# 本地临时检查产物
+data_preview_pdf/
+
+# 本地服务运行日志
+server.out.log
+server.err.log
+*.log
