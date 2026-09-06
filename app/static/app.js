@@ -106,6 +106,7 @@ function cancelEventFlush() {
 }
 async function selectTask(taskId) {
   state.selectedTaskId = taskId;
+  renderFileList();
   stopEvents();
   cancelEventFlush();
   const item = state.files.find((file) => file.task_id === taskId);
@@ -201,8 +202,8 @@ async function loadTaskHistory(taskId) {
     const items = payload.items || [];
     state.events.set(taskId, items);
     renderEvents(items, true);
-  } catch {
-    // 历史事件不可用时保持节点初始状态
+  } catch (error) {
+    showToast(`执行历史加载失败：${error.message}，可稍后刷新重试`, "error");
   }
 }
 function renderFileList() {
@@ -284,7 +285,14 @@ function renderEvents(taskEvents, animate = false) {
     target.duration = event.duration_ms;
   });
   let delayIndex = 0;
+  let failureSeen = false;
   grouped.forEach((item) => {
+    if (item.state === "failed") {
+      failureSeen = true;
+    } else if (item.state === "idle" && failureSeen) {
+      item.state = "skipped";
+      item.message = "前置节点失败，已跳过";
+    }
     if (!nodeRows.has(item.key)) {
       buildNodeRow(item.key, item.label);
     }
@@ -321,8 +329,9 @@ function renderResult(result, status) {
     elements.copyButton.disabled = true;
     return;
   }
+  const reviewStatuses = ["needs_review", "conflict", "missing", "invalid"];
   const reviewFields = Object.entries(result.field_meta || {})
-    .filter(([, meta]) => meta && meta.status === "needs_review")
+    .filter(([, meta]) => meta && reviewStatuses.includes(meta.status))
     .map(([key]) => key);
   elements.resultSummary.innerHTML = `
     <span class="result-status ${statusClass(status)}">${escapeHtml(statusText(status))}</span>

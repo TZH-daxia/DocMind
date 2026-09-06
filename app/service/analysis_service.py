@@ -47,8 +47,7 @@ class AnalysisService(WorkflowEventPublisher):
         self.file_store = FileStore(settings)
         self.renderer = LocalDocumentRenderer(self.file_store)
         self.deepseek = DeepSeekExtractionAgent(settings)
-        self.system_prompt = load_po_order_extraction_prompt()
-        self.vision_prompt = load_po_order_vision_prompt()
+        # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
 
     async def create_task(
@@ -135,7 +134,12 @@ class AnalysisService(WorkflowEventPublisher):
             )
         return sorted(
             tasks,
-            key=lambda item: str(item.get("updated_at") or ""),
+            # 按上传时间（created_at）倒序，使最近上传的文件排在最上；
+            # 同秒上传时再用最后更新时间（updated_at）兜底。
+            key=lambda item: (
+                str(item.get("created_at") or ""),
+                str(item.get("updated_at") or ""),
+            ),
             reverse=True,
         )
 
@@ -357,7 +361,7 @@ class AnalysisService(WorkflowEventPublisher):
         task_id = state["task_id"]
         images = self._load_images(state.get("image_paths", []))
         vlm_content = await self.deepseek.describe_images(
-            self.vision_prompt,
+            load_po_order_vision_prompt(),
             images,
         )
         parsed_directory = Path(state["parsed"]["parsed_directory"])
@@ -375,7 +379,7 @@ class AnalysisService(WorkflowEventPublisher):
 
         task_id = state["task_id"]
         model_candidates = await self.deepseek.extract(
-            system_prompt=self.system_prompt,
+            system_prompt=load_po_order_extraction_prompt(),
             vlm_image_content=state.get("vlm_image_content", ""),
             context=state["context"],
         )
@@ -425,13 +429,17 @@ class AnalysisService(WorkflowEventPublisher):
                 continue
             grouped.setdefault(candidate.field_key, []).append(candidate)
 
+        # 只要状态属于需要人工介入的范畴，就纳入待审核集合
+        # （低置信度、模型主动标记的 needs_review/conflict、必填缺失的 missing、非法 invalid）
+        review_statuses = {"needs_review", "conflict", "missing", "invalid"}
+
         for field_key, options in grouped.items():
             if field_key not in result:
                 continue
             best = max(options, key=lambda item: item.confidence)
             below = best.confidence < threshold
             status = "needs_review" if below else best.status
-            if below:
+            if status in review_statuses:
                 review_fields.add(field_key)
             field_meta[field_key] = FieldMetadata(
                 value=best.value,
@@ -484,7 +492,7 @@ class AnalysisService(WorkflowEventPublisher):
         return analysis_result.model_dump(mode="json")
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:
-        """加载页面图片：第一页给整页图 + 四象限放大图，保证小字号文本可辨认。"""
+        """加载页面图片：第一页给整页图 + 上下两半放大图，保证小字号文本可辨认。"""
 
         page_paths = [
             path
@@ -507,12 +515,12 @@ class AnalysisService(WorkflowEventPublisher):
                 )
             )
             if index == 0:
-                images.extend(self._quadrant_images(content, path.name))
+                images.extend(self._split_half_images(content, path.name))
         return images[:budget]
 
     @staticmethod
-    def _quadrant_images(content: bytes, name: str) -> list[ImageInput]:
-        """把整页图切成带重叠的 2x2 放大象限，提升小字辨认率。"""
+    def _split_half_images(content: bytes, name: str) -> list[ImageInput]:
+        """把整页图切成带垂直重叠的上下两半，提升小字辨认率且减少图片数量。"""
 
         import io
 
@@ -520,27 +528,25 @@ class AnalysisService(WorkflowEventPublisher):
 
         image = Image.open(io.BytesIO(content))
         width, height = image.size
-        overlap_x, overlap_y = int(width * 0.12), int(height * 0.12)
-        mid_x, mid_y = width // 2, height // 2
+        overlap_y = int(height * 0.12)
+        mid_y = height // 2
         boxes = (
-            (0, 0, mid_x + overlap_x, mid_y + overlap_y),
-            (mid_x - overlap_x, 0, width, mid_y + overlap_y),
-            (0, mid_y - overlap_y, mid_x + overlap_x, height),
-            (mid_x - overlap_x, mid_y - overlap_y, width, height),
+            (0, 0, width, mid_y + overlap_y),
+            (0, mid_y - overlap_y, width, height),
         )
         stem = Path(name).stem
-        quadrants: list[ImageInput] = []
+        halves: list[ImageInput] = []
         for index, box in enumerate(boxes, start=1):
             buffer = io.BytesIO()
             image.crop(box).save(buffer, format="PNG")
-            quadrants.append(
+            halves.append(
                 ImageInput(
                     content=buffer.getvalue(),
                     media_type="image/png",
-                    name=f"{stem}_zoom_{index}.png",
+                    name=f"{stem}_half_{index}.png",
                 )
             )
-        return quadrants
+        return halves
 
     def _update_status(self, task_id: str, **updates: Any) -> None:
         """原子更新一个任务状态快照。"""
