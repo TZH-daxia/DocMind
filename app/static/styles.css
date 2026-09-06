@@ -212,9 +212,11 @@ h1 {
   transition: border-color 160ms ease, background 160ms ease;
 }
 
-.upload-dropzone:hover {
+.upload-dropzone:hover,
+.upload-dropzone.dragover {
   border-color: var(--teal);
   background: var(--teal-soft);
+  border-style: solid;
 }
 
 .dropzone-icon {
@@ -243,29 +245,6 @@ h1 {
   color: var(--muted);
   font-size: 11px;
   margin-top: 3px;
-}
-
-.context-section {
-  padding: 13px 16px 15px;
-  border-bottom: 1px solid var(--line);
-}
-
-.section-label {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-.context-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 9px;
-}
-
-.context-grid label {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 select {
@@ -400,50 +379,16 @@ select:focus {
   background: var(--red-soft);
 }
 
-.primary-button,
 .secondary-button {
   border-radius: 5px;
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 700;
+  border: 1px solid var(--line);
+  color: var(--navy);
+  background: #fff;
 }
 
-.primary-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid var(--teal);
-  color: #fff;
-  background: var(--teal);
-}
-
-.primary-button.is-running .run-icon {
-  display: none;
-}
-
-.primary-button.is-running::before {
-  content: "";
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
-  animation: button-spin 700ms linear infinite;
-}
-
-@keyframes button-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.primary-button:hover:not(:disabled) {
-  background: #0f887e;
-}
-
-.primary-button:disabled,
 .secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -617,6 +562,18 @@ select:focus {
 .result-status.failed {
   color: #a74442;
   background: var(--red-soft);
+}
+
+.review-note {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--amber);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: #8a5b1e;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .result-json {

@@ -1,20 +1,20 @@
 from typing import Any
 
-from app.workflow.contracts import FinalizeHandler
+from app.workflow.contracts import BuildResultHandler
 from app.workflow.events import WorkflowEventPublisher
 from app.workflow.node_runner import run_node
 from app.workflow.state import AnalysisState
 
 
-def build_finalize_result_node(
-    handler: FinalizeHandler,
+def build_build_result_node(
+    handler: BuildResultHandler,
     publisher: WorkflowEventPublisher | None = None,
 ):
-    """创建最终结果生成节点。"""
+    """创建候选 → 置信度判断 + 输出节点。"""
 
-    async def finalize_result(state: AnalysisState) -> dict[str, Any]:
+    async def build_result(state: AnalysisState) -> dict[str, Any]:
         result = await run_node(
-            node_name="finalize_result",
+            node_name="build_result",
             state=state,
             handler=lambda: handler(state),
             start_progress=80,
@@ -23,4 +23,4 @@ def build_finalize_result_node(
         )
         return {"result": result}
 
-    return finalize_result
+    return build_result

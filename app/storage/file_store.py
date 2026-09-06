@@ -2,7 +2,7 @@ import json
 import os
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ class FileStore:
     def new_task_id(self, source_filename: str | None = None) -> str:
         """创建可读的任务标识。"""
 
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         source_label = ""
         if source_filename:
             source_label = f"_{Path(self.safe_filename(source_filename)).stem}"
@@ -80,7 +80,9 @@ class FileStore:
         """使用同目录临时文件和原子替换写入字节内容。"""
 
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+        # 临时文件名只保留 uuid，避免把超长目标文件名再拼一遍导致 Windows
+        # 260 字符路径上限（MAX_PATH）触发 FileNotFoundError: [Errno 2]。
+        temporary = destination.with_name(f".{uuid.uuid4().hex}.tmp")
         temporary.write_bytes(content)
         os.replace(temporary, destination)
 
@@ -116,11 +118,6 @@ class FileStore:
         """读取二进制文件。"""
 
         return path.read_bytes()
-
-    def list_files(self, directory: Path) -> list[Path]:
-        """返回目录内按路径排序的文件列表。"""
-
-        return sorted(directory.rglob("*"))
 
     def source_stem(self, source_name: str | None) -> str:
         """返回源文件的安全文件名主干，用于任务内产物命名。"""
@@ -159,27 +156,6 @@ class FileStore:
         """返回候选值文件路径。"""
 
         return self.task_dir("parsed_documents", task_id) / f"{source_stem}_candidates.json"
-
-    def normalized_candidates_path(self, task_id: str, source_stem: str) -> Path:
-        """返回标准化候选值文件路径。"""
-
-        return (
-            self.task_dir("parsed_documents", task_id)
-            / f"{source_stem}_normalized_candidates.json"
-        )
-
-    def validated_candidates_path(self, task_id: str, source_stem: str) -> Path:
-        """返回校验后候选值文件路径。"""
-
-        return (
-            self.task_dir("parsed_documents", task_id)
-            / f"{source_stem}_validated_candidates.json"
-        )
-
-    def resolved_fields_path(self, task_id: str, source_stem: str) -> Path:
-        """返回字段决议文件路径。"""
-
-        return self.task_dir("parsed_documents", task_id) / f"{source_stem}_resolved_fields.json"
 
     def process_log_path(self, task_id: str) -> Path:
         """返回处理日志文件路径。"""

@@ -62,28 +62,6 @@ async def list_analysis_files(
     return {"items": service.list_tasks()}
 
 
-@router.post("/tasks/{task_id}/run", status_code=202)
-async def run_analysis_task(
-    task_id: str,
-    background_tasks: BackgroundTasks,
-    service: Annotated[AnalysisService, Depends(get_analysis_service)],
-) -> dict[str, Any]:
-    """手动启动一个分析任务。"""
-
-    try:
-        status = service.enqueue_task(task_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(service.process_task, task_id)
-    return {
-        "task_id": task_id,
-        "status": status.get("status"),
-        "message": "任务已开始运行",
-    }
-
-
 @router.get("/tasks/{task_id}/events")
 async def stream_analysis_events(
     task_id: str,
@@ -104,6 +82,19 @@ async def stream_analysis_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/tasks/{task_id}/events/history")
+async def get_analysis_event_history(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回任务已落盘的全部节点事件，用于回看已完成任务的执行过程。"""
+
+    try:
+        return {"items": service.read_task_events(task_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
 
 
 @router.get("/tasks/{task_id}")

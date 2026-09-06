@@ -6,22 +6,17 @@ const state = {
 };
 const nodes = [
   ["render_document", "文档转图片"],
-  ["parse_with_mineru", "MinerU 文档解析"],
   ["read_images_with_vlm", "图片视觉识别"],
   ["extract_candidates", "字段候选提取"],
-  ["normalize_candidates", "字段标准化"],
-  ["validate_candidates", "字段校验"],
-  ["resolve_conflicts", "冲突处理"],
-  ["calculate_confidence", "置信度计算"],
-  ["finalize_result", "生成最终 JSON"],
+  ["build_result", "置信度判断与输出"],
 ];
 const elements = {
   fileInput: document.querySelector("#fileInput"),
   fileList: document.querySelector("#fileList"),
   fileCount: document.querySelector("#fileCount"),
   refreshButton: document.querySelector("#refreshButton"),
-  runButton: document.querySelector("#runButton"),
-  runText: document.querySelector("#runText"),
+  uploadDropzone: document.querySelector("#uploadDropzone"),
+  filePanel: document.querySelector(".file-panel"),
   selectedName: document.querySelector("#selectedName"),
   selectedTaskId: document.querySelector("#selectedTaskId"),
   selectedStatus: document.querySelector("#selectedStatus"),
@@ -41,9 +36,9 @@ let latestProgressEvent = null;
 document.addEventListener("DOMContentLoaded", () => {
   elements.fileInput.addEventListener("change", onFileSelected);
   elements.refreshButton.addEventListener("click", loadFiles);
-  elements.runButton.addEventListener("click", runSelectedTask);
   elements.copyButton.addEventListener("click", copyResult);
   initEventList();
+  initDragAndDrop();
   loadFiles();
 });
 async function loadFiles() {
@@ -62,17 +57,45 @@ async function loadFiles() {
   }
 }
 async function onFileSelected(event) {
-  const file = event.target.files?.[0];
+  const files = Array.from(event.target.files || []);
   event.target.value = "";
-  if (!file) return;
-  try {
-    const task = await analysisApi.uploadFile(file, readContext());
-    showToast("上传成功，已自动开始分析", "success");
-    await loadFiles();
-    await selectTask(task.task_id);
-  } catch (error) {
-    showToast(error.message, "error");
+  await uploadFiles(files);
+}
+async function uploadFiles(files) {
+  if (!files.length) return;
+  let lastTaskId = null;
+  for (const file of files) {
+    try {
+      const task = await analysisApi.uploadFile(file, {});
+      lastTaskId = task.task_id;
+      showToast(`已上传：${file.name}`, "success");
+    } catch (error) {
+      showToast(`${file.name} 上传失败：${error.message}`, "error");
+    }
   }
+  if (lastTaskId) {
+    await loadFiles();
+    await selectTask(lastTaskId);
+  }
+}
+function initDragAndDrop() {
+  const dropzone = elements.uploadDropzone;
+  ["dragenter", "dragover"].forEach((type) =>
+    elements.filePanel.addEventListener(type, (event) => {
+      event.preventDefault();
+      dropzone.classList.add("dragover");
+    }),
+  );
+  ["dragleave", "drop"].forEach((type) =>
+    elements.filePanel.addEventListener(type, () => dropzone.classList.remove("dragover")),
+  );
+  elements.filePanel.addEventListener("drop", (event) => {
+    event.preventDefault();
+    uploadFiles(Array.from(event.dataTransfer?.files || []));
+  });
+  // 防止把文件拖到面板外时浏览器直接打开文件
+  window.addEventListener("dragover", (event) => event.preventDefault());
+  window.addEventListener("drop", (event) => event.preventDefault());
 }
 function cancelEventFlush() {
   if (flushTimer) {
@@ -89,7 +112,6 @@ async function selectTask(taskId) {
   if (!item) return;
   elements.selectedName.textContent = item.original_name;
   elements.selectedTaskId.textContent = item.task_id;
-  elements.runButton.disabled = item.status === "running";
   initEventList();
   renderEvents(state.events.get(taskId) || [], false);
   renderStatus(item.status, item.progress, item.current_stage);
@@ -104,21 +126,8 @@ async function selectTask(taskId) {
   }
   if (item.status === "running" || item.status === "queued") {
     subscribeToTask(taskId);
-  }
-}
-async function runSelectedTask() {
-  if (!state.selectedTaskId) return;
-  try {
-    await analysisApi.runTask(state.selectedTaskId);
-    state.events.set(state.selectedTaskId, []);
-    cancelEventFlush();
-    initEventList();
-    renderEvents([], false);
-    subscribeToTask(state.selectedTaskId);
-    setRunRunning(true);
-    elements.runButton.disabled = true;
-  } catch (error) {
-    showToast(error.message, "error");
+  } else {
+    await loadTaskHistory(taskId);
   }
 }
 function subscribeToTask(taskId) {
@@ -147,7 +156,6 @@ function handleTaskMessage(message) {
     flushEvents();
     renderStatus(message.status, message.progress, message.current_stage);
     if (["ready", "needs_review", "failed"].includes(message.status)) {
-      elements.runButton.disabled = false;
       stopEvents();
       const finalStatus = message.status;
       setTimeout(() => {
@@ -187,6 +195,16 @@ async function loadSelectedResult() {
     renderResult(null, "unknown");
   }
 }
+async function loadTaskHistory(taskId) {
+  try {
+    const payload = await analysisApi.getEvents(taskId);
+    const items = payload.items || [];
+    state.events.set(taskId, items);
+    renderEvents(items, true);
+  } catch {
+    // 历史事件不可用时保持节点初始状态
+  }
+}
 function renderFileList() {
   elements.fileCount.textContent = state.files.length;
   if (!state.files.length) {
@@ -215,16 +233,11 @@ function renderStatus(status, progress, label) {
   if (status) {
     elements.selectedStatus.textContent = statusText(status);
     elements.selectedStatus.className = `status-pill ${statusClass(status)}`;
-    setRunRunning(status === "running");
   }
   const safeProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, safeProgress))}%`;
   elements.progressPercent.textContent = `${safeProgress}%`;
   elements.progressLabel.textContent = label || "等待运行";
-}
-function setRunRunning(running) {
-  elements.runButton.classList.toggle("is-running", running);
-  elements.runText.textContent = running ? "运行中" : "运行";
 }
 function initEventList() {
   elements.eventList.innerHTML = "";
@@ -308,13 +321,16 @@ function renderResult(result, status) {
     elements.copyButton.disabled = true;
     return;
   }
-  const validation = result.validation || {};
+  const reviewFields = Object.entries(result.field_meta || {})
+    .filter(([, meta]) => meta && meta.status === "needs_review")
+    .map(([key]) => key);
   elements.resultSummary.innerHTML = `
     <span class="result-status ${statusClass(status)}">${escapeHtml(statusText(status))}</span>
-    <span>置信度 ${Math.round((result.overall_confidence || 0) * 100)}%</span>
-    <span>错误 ${validation.errors?.length || 0}</span>
-    <span>警告 ${validation.warnings?.length || 0}</span>`;
-  elements.resultJson.innerHTML = `<code>${escapeHtml(JSON.stringify(result.result || {}, null, 2))}</code>`;
+    <span>置信度 ${Math.round((result.overall_confidence || 0) * 100)}%</span>`;
+  const reviewNote = reviewFields.length
+    ? `<div class="review-note">以下字段待人工审核：${escapeHtml(reviewFields.join("、"))}</div>`
+    : "";
+  elements.resultJson.innerHTML = `<code>${escapeHtml(JSON.stringify(result.result || {}, null, 2))}</code>${reviewNote}`;
   elements.copyButton.disabled = false;
 }
 async function copyResult() {
@@ -322,12 +338,6 @@ async function copyResult() {
   if (!content || content === "{}") return;
   await navigator.clipboard.writeText(content);
   showToast("JSON 已复制", "success");
-}
-function readContext() {
-  const fidValue = document.querySelector("#client").value;
-  return {
-    fid: fidValue ? Number(fidValue) : null,
-  };
 }
 function stopEvents() {
   if (state.eventSource) {
@@ -340,7 +350,7 @@ function statusText(status) {
     queued: "待运行",
     running: "运行中",
     ready: "已完成",
-    needs_review: "待检查",
+    needs_review: "待人工审核",
     failed: "失败",
     unknown: "未知",
   }[status] || "未运行";

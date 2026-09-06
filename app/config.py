@@ -19,14 +19,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_prefix: str = "/api/v1"
 
-    parse_backend: str = "local"
-
-    mineru_api_key: str | None = None
-    mineru_base_url: str = "https://mineru.net/api/v4"
-    mineru_model_version: str = "vlm"
-    mineru_language: str = "ch"
-    mineru_timeout_seconds: float = 600.0
-    mineru_poll_interval_seconds: float = 3.0
+    review_confidence_threshold: float = 0.6
 
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"

@@ -18,14 +18,8 @@ const analysisApi = {
     });
   },
 
-  async runTask(taskId) {
-    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/run`, {
-      method: "POST",
-    });
-  },
-
-  async getStatus(taskId) {
-    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}`);
+  async getEvents(taskId) {
+    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/events/history`);
   },
 
   async getResult(taskId) {

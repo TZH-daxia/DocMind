@@ -33,23 +33,14 @@
           <span id="fileCount" class="count-badge">0</span>
         </div>
 
-        <label class="upload-dropzone" for="fileInput">
+        <label class="upload-dropzone" id="uploadDropzone" for="fileInput">
           <span class="dropzone-icon">＋</span>
           <span>
             <strong>添加托书文件</strong>
-            <small>PDF、DOC、XLS</small>
+            <small>PDF、DOC、XLS · 支持拖入</small>
           </span>
         </label>
         <input id="fileInput" type="file" accept=".pdf,.doc,.xls" hidden>
-
-        <div class="context-section">
-          <div class="section-label">运行上下文</div>
-          <div class="context-grid">
-            <label>委托客户 ID（fid）
-              <input id="client" type="number" placeholder="例如 1">
-            </label>
-          </div>
-        </div>
 
         <div id="fileList" class="file-list" aria-live="polite">
           <div class="empty-state">还没有上传文件</div>
@@ -64,9 +55,6 @@
           </div>
           <div class="process-actions">
             <span id="selectedStatus" class="status-pill idle">未选择任务</span>
-            <button id="runButton" class="primary-button" disabled>
-              <span class="run-icon" aria-hidden="true">▶</span><span id="runText">运行</span>
-            </button>
           </div>
         </div>
 

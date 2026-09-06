@@ -5,11 +5,10 @@ import mimetypes
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app.agent.deepseek_extractor import DeepSeekExtractionAgent, ImageInput
 from app.collector.document_renderer import LocalDocumentRenderer
-from app.collector.mineru_client import MinerUClient
 from app.config import Settings
 from app.prompts.loader import (
     load_po_order_extraction_prompt,
@@ -17,8 +16,11 @@ from app.prompts.loader import (
 )
 from app.schemas.analysis import (
     AnalysisContext,
+    AnalysisResult,
+    Evidence,
     FieldCandidate,
     FieldMetadata,
+    ValidationResult,
 )
 from app.schemas.file import UploadedDocument
 from app.schemas.po_order import (
@@ -29,14 +31,7 @@ from app.schemas.po_order import (
     PO_ORDER_KEYS,
     PO_ORDER_REQUIRED_KEYS,
 )
-from app.service.confidence.confidence_service import ConfidenceService
-from app.service.conflict.conflict_resolver import ConflictResolver
-from app.service.context_builder import ParsedContextFilesLoader
-from app.service.deterministic_extractor import extract_deterministic_candidates
-from app.service.normalization.candidate_normalizer import CandidateNormalizer
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
-from app.service.result_builder.result_builder import ResultBuilder
-from app.service.validation.candidate_validator import CandidateValidator
 from app.storage.file_store import FileStore
 from app.workflow.events import WorkflowEvent, WorkflowEventPublisher
 from app.workflow.graph import AnalysisGraph, WorkflowHandlers
@@ -50,17 +45,10 @@ class AnalysisService(WorkflowEventPublisher):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.file_store = FileStore(settings)
-        self.mineru = MinerUClient(settings, self.file_store)
         self.renderer = LocalDocumentRenderer(self.file_store)
         self.deepseek = DeepSeekExtractionAgent(settings)
         self.system_prompt = load_po_order_extraction_prompt()
         self.vision_prompt = load_po_order_vision_prompt()
-        self.context_loader = ParsedContextFilesLoader(self.file_store)
-        self.candidate_normalizer = CandidateNormalizer()
-        self.candidate_validator = CandidateValidator()
-        self.conflict_resolver = ConflictResolver()
-        self.confidence_service = ConfidenceService()
-        self.result_builder = ResultBuilder()
         self.requirement_service = PoOrderRequirementService()
 
     async def create_task(
@@ -151,20 +139,20 @@ class AnalysisService(WorkflowEventPublisher):
             reverse=True,
         )
 
-    def enqueue_task(self, task_id: str) -> dict[str, Any]:
-        """将任务置为待运行状态并返回任务快照。"""
+    def read_task_events(self, task_id: str) -> list[dict[str, Any]]:
+        """读取任务已落盘的全部节点事件（用于回看已完成任务）。"""
 
-        status = self.get_task_status(task_id)
-        if status.get("status") == "running":
-            raise ValueError("TASK_ALREADY_RUNNING")
-        self._update_status(
-            task_id,
-            status="queued",
-            progress=0,
-            current_stage="queued",
-            error=None,
-        )
-        return self.get_task_status(task_id)
+        self.get_task_status(task_id)
+        log_path = self.file_store.process_log_path(task_id)
+        if not log_path.exists():
+            return []
+        events: list[dict[str, Any]] = []
+        for line in self.file_store.read_text(log_path, errors="replace").splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return events
 
     async def iter_task_events(self, task_id: str) -> AsyncIterator[str]:
         """持续读取任务事件并转换为 SSE 消息。"""
@@ -227,7 +215,6 @@ class AnalysisService(WorkflowEventPublisher):
         self._update_status(task_id, status="running", progress=5, current_stage="starting")
         state: AnalysisState = {
             "task_id": task_id,
-            "document_id": status["document_id"],
             "uploaded_path": str(self.file_store.root / status["uploaded_path"]),
             "source_name": status.get("original_name") or Path(status["uploaded_path"]).name,
             "schema_version": status.get("schema_version", "po_order.v1"),
@@ -235,18 +222,12 @@ class AnalysisService(WorkflowEventPublisher):
         }
         workflow = AnalysisGraph(
             handlers=WorkflowHandlers(
-                parse_with_mineru=self.parse_with_mineru,
+                render_document=self.render_document,
                 read_images_with_vlm=self.read_images_with_vlm,
                 extract_candidates=self.extract_candidates,
-                normalize_candidates=self.normalize_candidates,
-                validate_candidates=self.validate_candidates,
-                resolve_conflicts=self.resolve_conflicts,
-                calculate_confidence=self.calculate_confidence,
-                finalize_result=self.finalize_result,
-                render_document=self.render_document,
+                build_result=self.build_result,
             ),
             publisher=self,
-            backend=self.settings.parse_backend,
         )
         try:
             await workflow.ainvoke(state)
@@ -365,7 +346,6 @@ class AnalysisService(WorkflowEventPublisher):
         )
         return {
             "parsed_directory": str(rendered.parsed_directory),
-            "markdown_path": str(rendered.markdown_path),
             "metadata_path": str(rendered.metadata_path),
             "batch_id": None,
             "image_paths": [str(path) for path in rendered.image_paths],
@@ -390,77 +370,18 @@ class AnalysisService(WorkflowEventPublisher):
         )
         return vlm_content
 
-    async def parse_with_mineru(self, state: AnalysisState) -> dict[str, Any]:
-        """为一份文件调用一次 MinerU 并持久化解析结果。"""
-
-        task_id = state["task_id"]
-        source_path = Path(state["uploaded_path"])
-        result = await self.mineru.parse_single_file(
-            source_path=source_path,
-            source_name=state["source_name"],
-            task_id=task_id,
-            document_id=state["document_id"],
-        )
-        return {
-            "parsed_directory": str(result.parsed_directory),
-            "markdown_path": str(result.markdown_path) if result.markdown_path else None,
-            "metadata_path": str(result.result_metadata_path),
-            "batch_id": result.batch_id,
-            "image_paths": [
-                str(path)
-                for path in self.file_store.list_files(result.parsed_directory)
-                if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
-            ],
-        }
-
     async def extract_candidates(self, state: AnalysisState) -> list[dict[str, Any]]:
-        """合并确定性规则候选和 DeepSeek 多模态候选。"""
+        """仅以 VLM 视觉理解文档为来源抽取字段候选。"""
 
         task_id = state["task_id"]
-        parsed = state["parsed"]
-        context_files = self.context_loader.load(
-            Path(parsed["parsed_directory"]),
-        )
-        self._update_status(
-            task_id,
-            full_markdown_path=(
-                self.file_store.relative_path(context_files.full_markdown_path)
-                if context_files.full_markdown_path
-                else None
-            ),
-            structured_json_path=(
-                self.file_store.relative_path(context_files.structured_json_path)
-                if context_files.structured_json_path
-                else None
-            ),
-        )
-        deterministic = extract_deterministic_candidates(
-            context_files.full_markdown,
-            state["document_id"],
-        )
         model_candidates = await self.deepseek.extract(
             system_prompt=self.system_prompt,
-            full_markdown=context_files.full_markdown,
-            structured_json=context_files.structured_json,
-            full_markdown_name=(
-                context_files.full_markdown_path.name
-                if context_files.full_markdown_path
-                else "full.md（缺失）"
-            ),
-            structured_json_name=(
-                context_files.structured_json_path.name
-                if context_files.structured_json_path
-                else "content_list_v2.json（缺失）"
-            ),
-            deterministic_candidates=deterministic,
-            context=state["context"],
             vlm_image_content=state.get("vlm_image_content", ""),
+            context=state["context"],
         )
         allowed_keys = set(PO_ORDER_KEYS)
         all_candidates = [
-            candidate
-            for candidate in deterministic + model_candidates
-            if candidate.field_key in allowed_keys
+            candidate for candidate in model_candidates if candidate.field_key in allowed_keys
         ]
         self.file_store.write_json_atomic(
             self.file_store.candidates_path(task_id, self.file_store.source_stem(state["source_name"])),
@@ -468,99 +389,94 @@ class AnalysisService(WorkflowEventPublisher):
         )
         return [candidate.model_dump(mode="json") for candidate in all_candidates]
 
-    async def normalize_candidates(self, state: AnalysisState) -> list[dict[str, Any]]:
-        """标准化候选值并保存中间结果。"""
-
-        candidates = [
-            FieldCandidate.model_validate(item)
-            for item in state.get("candidates", [])
-        ]
-        normalized = self.candidate_normalizer.normalize(candidates)
-        self.file_store.write_json_atomic(
-            self.file_store.normalized_candidates_path(
-                state["task_id"], self.file_store.source_stem(state["source_name"])
-            ),
-            {
-                "task_id": state["task_id"],
-                "candidates": [item.model_dump(mode="json") for item in normalized],
-            },
-        )
-        return [item.model_dump(mode="json") for item in normalized]
-
-    async def validate_candidates(self, state: AnalysisState) -> list[dict[str, Any]]:
-        """校验候选值并保存中间结果。"""
-
-        candidates = [
-            FieldCandidate.model_validate(item)
-            for item in state.get("normalized_candidates", [])
-        ]
-        validated = self.candidate_validator.validate(candidates)
-        self.file_store.write_json_atomic(
-            self.file_store.validated_candidates_path(
-                state["task_id"], self.file_store.source_stem(state["source_name"])
-            ),
-            {
-                "task_id": state["task_id"],
-                "candidates": [item.model_dump(mode="json") for item in validated],
-            },
-        )
-        return [item.model_dump(mode="json") for item in validated]
-
-    async def resolve_conflicts(self, state: AnalysisState) -> dict[str, dict[str, Any]]:
-        """处理候选冲突并保存字段决议。"""
-
-        candidates = [
-            FieldCandidate.model_validate(item)
-            for item in state.get("validated_candidates", [])
-        ]
-        resolved = self.conflict_resolver.resolve(candidates)
-        self.file_store.write_json_atomic(
-            self.file_store.resolved_fields_path(
-                state["task_id"], self.file_store.source_stem(state["source_name"])
-            ),
-            {
-                "task_id": state["task_id"],
-                "fields": {
-                    key: value.model_dump(mode="json")
-                    for key, value in resolved.items()
-                },
-            },
-        )
-        return {
-            key: value.model_dump(mode="json")
-            for key, value in resolved.items()
-        }
-
-    async def calculate_confidence(self, state: AnalysisState) -> float:
-        """计算任务整体置信度。"""
-
-        field_meta = {
-            key: FieldMetadata.model_validate(value)
-            for key, value in state.get("resolved_fields", {}).items()
-        }
-        return self.confidence_service.calculate_overall(field_meta)
-
-    async def finalize_result(self, state: AnalysisState) -> dict[str, Any]:
-        """选择有证据支撑的值，完成校验并持久化 JSON 文件。"""
+    async def build_result(self, state: AnalysisState) -> dict[str, Any]:
+        """按候选置信度生成最终结果：保留模型原值，低于阈值标记待人工审核。"""
 
         task_id = state["task_id"]
-        field_meta = {
-            key: FieldMetadata.model_validate(value)
-            for key, value in state.get("resolved_fields", {}).items()
-        }
-        analysis_result = self.result_builder.build(
+        schema_version = state.get("schema_version", "po_order.v1")
+        context = state.get("context") or {}
+        threshold = self.settings.review_confidence_threshold
+
+        candidates = [
+            FieldCandidate.model_validate(item) for item in state.get("candidates", [])
+        ]
+        required_keys = set(self.requirement_service.required_field_keys(context))
+
+        result: dict[str, Any] = {key: None for key in PO_ORDER_KEYS}
+        field_meta: dict[str, FieldMetadata] = {}
+        review_fields: set[str] = set()
+
+        # 委托客户（fid）仅由调用方 context 提供，不走模型抽取
+        client_value = self.requirement_service.context_client_value(context)
+        if client_value not in (None, ""):
+            result["fid"] = client_value
+            field_meta["fid"] = FieldMetadata(
+                value=client_value,
+                status="confirmed",
+                confidence=1.0,
+                evidence=[Evidence(quote=f"fid={client_value}")],
+                extraction_method="context",
+            )
+
+        # 同一字段聚合，取置信度最高的候选；值原样保留，不修改模型输出
+        grouped: dict[str, list[FieldCandidate]] = {}
+        for candidate in candidates:
+            if candidate.value is None or candidate.field_key in CONTEXT_ONLY_KEYS:
+                continue
+            grouped.setdefault(candidate.field_key, []).append(candidate)
+
+        for field_key, options in grouped.items():
+            if field_key not in result:
+                continue
+            best = max(options, key=lambda item: item.confidence)
+            below = best.confidence < threshold
+            status = "needs_review" if below else best.status
+            if below:
+                review_fields.add(field_key)
+            field_meta[field_key] = FieldMetadata(
+                value=best.value,
+                status=status,
+                confidence=best.confidence,
+                evidence=best.evidence,
+                extraction_method=best.extraction_method,
+            )
+            result[field_key] = best.value
+
+        # 必填字段缺失 → 标记待人工审核，绝不伪造值
+        for required_key in required_keys:
+            meta = field_meta.get(required_key)
+            if meta is None or meta.value is None:
+                review_fields.add(required_key)
+                field_meta.setdefault(
+                    required_key,
+                    FieldMetadata(
+                        value=None,
+                        status="missing",
+                        confidence=0.0,
+                        evidence=[],
+                        extraction_method="none",
+                    ),
+                )
+
+        confidences = [meta.confidence for meta in field_meta.values() if meta.value is not None]
+        overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+        overall_status: Literal["ready", "needs_review", "failed"] = (
+            "needs_review" if review_fields else "ready"
+        )
+        analysis_result = AnalysisResult(
             task_id=task_id,
-            schema_version=state.get("schema_version", "po_order.v1"),
+            schema_version=schema_version,
+            result=result,
+            overall_status=overall_status,
+            overall_confidence=overall_confidence,
             field_meta=field_meta,
-            context=state["context"],
-            overall_confidence=state.get("overall_confidence", 0.0),
-            requirement_service=self.requirement_service,
+            validation=ValidationResult(is_valid=True),
         )
         result_path = self.file_store.result_path(task_id)
         self.file_store.write_json_atomic(result_path, analysis_result.model_dump(mode="json"))
         self._update_status(
             task_id,
-            status=analysis_result.overall_status,
+            status=overall_status,
             progress=100,
             current_stage="completed",
             result_path=self.file_store.relative_path(result_path),
@@ -568,24 +484,63 @@ class AnalysisService(WorkflowEventPublisher):
         return analysis_result.model_dump(mode="json")
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:
-        """加载数量受限的 MinerU 页面图片供 VLM 复核。"""
+        """加载页面图片：第一页给整页图 + 四象限放大图，保证小字号文本可辨认。"""
 
+        page_paths = [
+            path
+            for path in paths
+            if Path(path).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        ]
+        budget = 6
         images: list[ImageInput] = []
-        for raw_path in paths:
+        for index, raw_path in enumerate(page_paths):
+            if len(images) >= budget:
+                break
             path = Path(raw_path)
-            if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-                continue
             media_type = mimetypes.guess_type(path.name)[0] or "image/png"
+            content = self.file_store.read_bytes(path)
             images.append(
                 ImageInput(
-                    content=self.file_store.read_bytes(path),
+                    content=content,
                     media_type=media_type,
                     name=path.name,
                 )
             )
-            if len(images) >= 6:
-                break
-        return images
+            if index == 0:
+                images.extend(self._quadrant_images(content, path.name))
+        return images[:budget]
+
+    @staticmethod
+    def _quadrant_images(content: bytes, name: str) -> list[ImageInput]:
+        """把整页图切成带重叠的 2x2 放大象限，提升小字辨认率。"""
+
+        import io
+
+        from PIL import Image  # type: ignore[import-not-found]
+
+        image = Image.open(io.BytesIO(content))
+        width, height = image.size
+        overlap_x, overlap_y = int(width * 0.12), int(height * 0.12)
+        mid_x, mid_y = width // 2, height // 2
+        boxes = (
+            (0, 0, mid_x + overlap_x, mid_y + overlap_y),
+            (mid_x - overlap_x, 0, width, mid_y + overlap_y),
+            (0, mid_y - overlap_y, mid_x + overlap_x, height),
+            (mid_x - overlap_x, mid_y - overlap_y, width, height),
+        )
+        stem = Path(name).stem
+        quadrants: list[ImageInput] = []
+        for index, box in enumerate(boxes, start=1):
+            buffer = io.BytesIO()
+            image.crop(box).save(buffer, format="PNG")
+            quadrants.append(
+                ImageInput(
+                    content=buffer.getvalue(),
+                    media_type="image/png",
+                    name=f"{stem}_zoom_{index}.png",
+                )
+            )
+        return quadrants
 
     def _update_status(self, task_id: str, **updates: Any) -> None:
         """原子更新一个任务状态快照。"""
