@@ -25,15 +25,13 @@ from app.schemas.analysis import (
 from app.schemas.file import UploadedDocument
 from app.schemas.po_order import (
     CONTEXT_ONLY_KEYS,
-    FIELD_TITLES,
-    NUMBER_KEYS,
-    OBJECT_KEYS,
     PO_ORDER_KEYS,
-    PO_ORDER_REQUIRED_KEYS,
+    PORT_FIELD_KEYS,
 )
+from app.service.port_normalization_service import PortNormalizationService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.storage.file_store import FileStore
-from app.workflow.events import WorkflowEvent, WorkflowEventPublisher
+from app.workflow.events import WorkflowEvent, WorkflowEventPublisher, now_iso
 from app.workflow.graph import AnalysisGraph, WorkflowHandlers
 from app.workflow.state import AnalysisState
 
@@ -49,6 +47,7 @@ class AnalysisService(WorkflowEventPublisher):
         self.deepseek = DeepSeekExtractionAgent(settings)
         # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
+        self.port_service = PortNormalizationService(settings, self.file_store)
 
     async def create_task(
         self,
@@ -73,6 +72,7 @@ class AnalysisService(WorkflowEventPublisher):
         task_id = self.file_store.new_task_id(upload.filename)
         document_id = self.file_store.new_document_id()
         uploaded_path, _ = self.file_store.save_upload(upload)
+        created_at = now_iso()
         status = {
             "task_id": task_id,
             "request_id": request_id,
@@ -89,11 +89,27 @@ class AnalysisService(WorkflowEventPublisher):
             ),
             "context": context.model_dump(by_alias=True, mode="json"),
             "attempt": 1,
-            "created_at": datetime.now().astimezone().isoformat(),
-            "updated_at": datetime.now().astimezone().isoformat(),
+            "created_at": created_at,
+            "started_at": None,
+            "completed_at": None,
+            "updated_at": created_at,
+            "result_path": None,
+            "review_fields": [],
+            "overall_confidence": None,
             "error": None,
+            "last_node_event": None,
         }
         self.file_store.write_json_atomic(self.file_store.task_status_path(task_id), status)
+        self._append_process_event(
+            task_id,
+            event_type="task_created",
+            message="分析任务已创建",
+            details={
+                "original_name": upload.filename,
+                "schema_version": schema_version,
+                "auto_start": auto_start,
+            },
+        )
         return {
             "task_id": task_id,
             "request_id": request_id,
@@ -144,7 +160,7 @@ class AnalysisService(WorkflowEventPublisher):
         )
 
     def read_task_events(self, task_id: str) -> list[dict[str, Any]]:
-        """读取任务已落盘的全部节点事件（用于回看已完成任务）。"""
+        """读取任务已落盘的生命周期、业务与节点事件。"""
 
         self.get_task_status(task_id)
         log_path = self.file_store.process_log_path(task_id)
@@ -175,8 +191,9 @@ class AnalysisService(WorkflowEventPublisher):
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    message_kind = "workflow" if event.get("node_name") else "task_event"
                     payload = json.dumps(
-                        {"kind": "workflow", "event": event},
+                        {"kind": message_kind, "event": event},
                         ensure_ascii=False,
                     )
                     yield f"data: {payload}\n\n"
@@ -189,6 +206,9 @@ class AnalysisService(WorkflowEventPublisher):
                     "status": status.get("status"),
                     "progress": status.get("progress", 0),
                     "current_stage": status.get("current_stage", ""),
+                    "review_fields": status.get("review_fields", []),
+                    "overall_confidence": status.get("overall_confidence"),
+                    "completed_at": status.get("completed_at"),
                     "error": status.get("error"),
                 },
                 ensure_ascii=False,
@@ -216,7 +236,22 @@ class AnalysisService(WorkflowEventPublisher):
         """运行一份已保存文档的 LangGraph 工作流。"""
 
         status = self.get_task_status(task_id)
-        self._update_status(task_id, status="running", progress=5, current_stage="starting")
+        started_at = now_iso()
+        self._update_status(
+            task_id,
+            status="running",
+            progress=5,
+            current_stage="starting",
+            started_at=started_at,
+            completed_at=None,
+            error=None,
+        )
+        self._append_process_event(
+            task_id,
+            event_type="task_started",
+            message="分析任务开始执行",
+            stage="starting",
+        )
         state: AnalysisState = {
             "task_id": task_id,
             "uploaded_path": str(self.file_store.root / status["uploaded_path"]),
@@ -242,13 +277,21 @@ class AnalysisService(WorkflowEventPublisher):
                 status="failed",
                 progress=100,
                 current_stage="failed",
+                completed_at=now_iso(),
                 error={"code": "ANALYSIS_FAILED", "message": str(exc)},
+            )
+            self._append_process_event(
+                task_id,
+                event_type="task_failed",
+                message="分析任务执行失败",
+                stage="failed",
+                details={"error_code": "ANALYSIS_FAILED"},
             )
 
     def publish(self, event: WorkflowEvent) -> None:
         """记录节点事件并更新任务状态，预留前端推送扩展点。"""
 
-        logger.info(
+        logger.debug(
             "工作流节点事件：task_id=%s node=%s event=%s",
             event.task_id,
             event.node_name,
@@ -285,10 +328,23 @@ class AnalysisService(WorkflowEventPublisher):
             )
         status["updated_at"] = datetime.now().astimezone().isoformat()
         self.file_store.write_json_atomic(self.file_store.task_status_path(event.task_id), status)
-        self.file_store.append_text(
-            self.file_store.process_log_path(event.task_id),
-            json.dumps(event.to_dict(), ensure_ascii=False) + "\n",
-        )
+        self._append_process_payload(event.task_id, event.to_dict())
+        if (
+            event.node_name == "build_result"
+            and event.event_type == "succeeded"
+            and status.get("status") in {"ready", "needs_review"}
+        ):
+            self._append_process_event(
+                event.task_id,
+                event_type="task_completed",
+                message="分析任务执行完成",
+                stage="completed",
+                details={
+                    "status": status["status"],
+                    "review_fields": status.get("review_fields", []),
+                    "overall_confidence": status.get("overall_confidence"),
+                },
+            )
 
     def get_task_status(self, task_id: str) -> dict[str, Any]:
         """读取一个任务的状态 JSON。"""
@@ -305,33 +361,6 @@ class AnalysisService(WorkflowEventPublisher):
         if not path.exists():
             raise FileNotFoundError(task_id)
         return self.file_store.read_json(path)
-
-    def get_target_schema(self, schema_version: str) -> dict[str, Any]:
-        """返回订单新增目标字段 schema（12 字段，必填在前、选填在后）。"""
-
-        if schema_version != "po_order.v1":
-            raise FileNotFoundError(schema_version)
-        required = set(PO_ORDER_REQUIRED_KEYS)
-        return {
-            "schema": "po_order",
-            "version": schema_version,
-            "fields": [
-                {
-                    "key": field_key,
-                    "title": FIELD_TITLES[field_key],
-                    "required": field_key in required,
-                    "type": (
-                        "object"
-                        if field_key in OBJECT_KEYS
-                        else "number"
-                        if field_key in NUMBER_KEYS
-                        else "string"
-                    ),
-                    "context_only": field_key in CONTEXT_ONLY_KEYS,
-                }
-                for field_key in PO_ORDER_KEYS
-            ],
-        }
 
     async def render_document(self, state: AnalysisState) -> dict[str, Any]:
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
@@ -439,6 +468,9 @@ class AnalysisService(WorkflowEventPublisher):
             best = max(options, key=lambda item: item.confidence)
             below = best.confidence < threshold
             status = "needs_review" if below else best.status
+            # 港口原文仅代表抽取已确认；normalized 只应由后续三字码归一化成功后设置。
+            if field_key in PORT_FIELD_KEYS and status == "normalized":
+                status = "confirmed"
             if status in review_statuses:
                 review_fields.add(field_key)
             field_meta[field_key] = FieldMetadata(
@@ -466,6 +498,21 @@ class AnalysisService(WorkflowEventPublisher):
                     ),
                 )
 
+        # 始发港/到达港三字码归一化：仅对通过质量审核的字段执行，
+        # 待人工审核字段质量不高，不做转换，保留原值
+        await self._normalize_port_fields(
+            result,
+            field_meta,
+            review_fields,
+            task_id=task_id,
+        )
+
+        ordered_field_meta = {
+            key: field_meta[key] for key in PO_ORDER_KEYS if key in field_meta
+        }
+        ordered_review_fields = [
+            key for key in PO_ORDER_KEYS if key in review_fields
+        ]
         confidences = [meta.confidence for meta in field_meta.values() if meta.value is not None]
         overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         overall_status: Literal["ready", "needs_review", "failed"] = (
@@ -477,19 +524,145 @@ class AnalysisService(WorkflowEventPublisher):
             result=result,
             overall_status=overall_status,
             overall_confidence=overall_confidence,
-            field_meta=field_meta,
+            field_meta=ordered_field_meta,
+            review_fields=ordered_review_fields,
             validation=ValidationResult(is_valid=True),
         )
         result_path = self.file_store.result_path(task_id)
         self.file_store.write_json_atomic(result_path, analysis_result.model_dump(mode="json"))
+        completed_at = now_iso()
         self._update_status(
             task_id,
             status=overall_status,
             progress=100,
             current_stage="completed",
+            completed_at=completed_at,
             result_path=self.file_store.relative_path(result_path),
+            review_fields=ordered_review_fields,
+            overall_confidence=overall_confidence,
+            error=None,
+        )
+        self._append_process_event(
+            task_id,
+            event_type="result_built",
+            message="最终分析结果已生成",
+            stage="build_result",
+            details={
+                "status": overall_status,
+                "review_fields": ordered_review_fields,
+                "normalized_fields": [
+                    key
+                    for key, meta in ordered_field_meta.items()
+                    if meta.status == "normalized"
+                ],
+            },
         )
         return analysis_result.model_dump(mode="json")
+
+    async def _normalize_port_fields(
+        self,
+        result: dict[str, Any],
+        field_meta: dict[str, FieldMetadata],
+        review_fields: set[str],
+        task_id: str | None = None,
+    ) -> None:
+        """对非待审核的始发港/到达港执行三字码归一化。
+
+        - 归一化成功：result 值替换为三字码，字段状态置为 normalized，
+          原文与主数据出处追加进 evidence；
+        - 查表/校验不通过：保留原值，字段状态降级为 needs_review；
+        - 港口服务未启用或执行失败：整体跳过，不影响主流程。
+        """
+
+        review_statuses = {"needs_review", "conflict", "missing", "invalid"}
+        candidates = {
+            key: str(meta.value).strip()
+            for key, meta in field_meta.items()
+            if key in PORT_FIELD_KEYS
+            and isinstance(meta.value, str)
+            and meta.value.strip()
+            and meta.status not in review_statuses
+        }
+        if not candidates:
+            return
+        try:
+            outcomes = await self.port_service.normalize(candidates)
+        except Exception:
+            logger.exception("港口三字码归一化执行失败，保留原值")
+            return
+        for key, outcome in outcomes.items():
+            meta = field_meta.get(key)
+            if meta is None:
+                continue
+            if outcome.status == "normalized" and outcome.assembled:
+                evidence = list(meta.evidence)
+                evidence.append(
+                    Evidence(
+                        quote=(
+                            f"港口主数据：{outcome.three_code} "
+                            f"{outcome.english_name or ''}（原文：{outcome.raw_value}）"
+                        ).strip()
+                    )
+                )
+                result[key] = outcome.assembled
+                field_meta[key] = meta.model_copy(
+                    update={
+                        "value": outcome.assembled,
+                        "status": "normalized",
+                        "evidence": evidence,
+                    }
+                )
+                if task_id:
+                    self._append_process_event(
+                        task_id,
+                        event_type="port_normalized",
+                        message="港口字段三字码归一化成功",
+                        stage="build_result",
+                        details={
+                            "field_key": key,
+                            "three_code": outcome.three_code,
+                        },
+                    )
+            elif outcome.status == "skipped":
+                logger.info(
+                    "港口原文无法唯一确定三字码（%s：%s），字段降级为待人工审核",
+                    outcome.reason,
+                    outcome.raw_value,
+                )
+                field_meta[key] = meta.model_copy(update={"status": "needs_review"})
+                review_fields.add(key)
+                if task_id:
+                    self._append_process_event(
+                        task_id,
+                        event_type="port_review_required",
+                        message="港口字段无法唯一确定三字码",
+                        stage="build_result",
+                        details={
+                            "field_key": key,
+                            "reason": outcome.reason,
+                        },
+                    )
+            else:
+                logger.info(
+                    "港口归一化未通过（%s：%s），字段 %s 降级为待人工审核",
+                    outcome.reason,
+                    outcome.raw_value,
+                    key,
+                )
+                field_meta[key] = meta.model_copy(update={"status": "needs_review"})
+                review_fields.add(key)
+                if task_id:
+                    self._append_process_event(
+                        task_id,
+                        event_type="port_review_required",
+                        message="港口字段三字码校验未通过",
+                        stage="build_result",
+                        details={
+                            "field_key": key,
+                            "reason": outcome.reason,
+                            "proposed_code": outcome.three_code,
+                        },
+                    )
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:
         """加载页面图片：第一页给整页图 + 上下两半放大图，保证小字号文本可辨认。"""
@@ -555,6 +728,37 @@ class AnalysisService(WorkflowEventPublisher):
         status.update(updates)
         status["updated_at"] = datetime.now().astimezone().isoformat()
         self.file_store.write_json_atomic(self.file_store.task_status_path(task_id), status)
+
+    def _append_process_event(
+        self,
+        task_id: str,
+        event_type: str,
+        message: str,
+        stage: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """向单任务 JSONL 日志追加一条业务事件。"""
+
+        payload: dict[str, Any] = {
+            "kind": "task_lifecycle",
+            "task_id": task_id,
+            "event_type": event_type,
+            "message": message,
+            "timestamp": now_iso(),
+        }
+        if stage:
+            payload["stage"] = stage
+        if details:
+            payload["details"] = details
+        self._append_process_payload(task_id, payload)
+
+    def _append_process_payload(self, task_id: str, payload: dict[str, Any]) -> None:
+        """将结构化事件追加到任务 process.log。"""
+
+        self.file_store.append_text(
+            self.file_store.process_log_path(task_id),
+            json.dumps(payload, ensure_ascii=False) + "\n",
+        )
 
     def _validate_upload_metadata(self, upload: UploadedDocument) -> None:
         """校验上传文件名和声明的内容类型。"""

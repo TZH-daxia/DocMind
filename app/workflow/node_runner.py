@@ -37,7 +37,7 @@ async def run_node[ResultT](
             started_at=started_at,
         )
     )
-    logger.info("工作流节点开始执行：task_id=%s node=%s", task_id, node_name)
+    logger.debug("工作流节点开始执行：task_id=%s node=%s", task_id, node_name)
     try:
         result = await handler()
     except Exception:
@@ -69,7 +69,7 @@ async def run_node[ResultT](
             duration_ms=duration_ms,
         )
     )
-    logger.info(
+    logger.debug(
         "工作流节点执行成功：task_id=%s node=%s duration_ms=%s",
         task_id,
         node_name,

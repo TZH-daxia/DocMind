@@ -38,6 +38,8 @@
 - **全链路可观测**：每个工作流节点记录 `started/succeeded/failed/skipped` 事件，落盘任务
   `process.log` 并通过 SSE 推送到前端时间线，节点逐个点亮、跳过节点明确标注；已完成任务
   可通过历史事件接口回放执行过程。
+- **日志分层**：系统与 HTTP 访问日志按日轮转写入 `logs/app.log`；每个文件的生命周期、
+  节点耗时和结果摘要写入该任务自己的 `process.log`。
 
 ## 工作流
 
@@ -113,7 +115,6 @@ data/
 | `GET` | `/api/v1/analysis/tasks/{id}/events` | SSE 实时节点事件（含历史回放，任务结束后自动关闭） |
 | `GET` | `/api/v1/analysis/tasks/{id}/events/history` | 已落盘的全部节点事件（回看已完成任务） |
 | `GET` | `/api/v1/analysis/tasks/{id}/result` | 分析结果 JSON |
-| `GET` | `/api/v1/analysis/schemas/po_order/{version}` | 目标字段 schema（含中文名/必填标记） |
 
 ### 结果结构示例
 

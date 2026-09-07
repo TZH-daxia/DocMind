@@ -21,7 +21,7 @@ class WorkflowEvent:
     def to_dict(self) -> dict[str, object]:
         """将事件转换为可写入 JSON 的字典。"""
 
-        return asdict(self)
+        return {"kind": "workflow_node", **asdict(self)}
 
 
 class WorkflowEventPublisher(Protocol):

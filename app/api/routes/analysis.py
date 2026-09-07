@@ -89,7 +89,7 @@ async def get_analysis_event_history(
     task_id: str,
     service: Annotated[AnalysisService, Depends(get_analysis_service)],
 ) -> dict[str, Any]:
-    """返回任务已落盘的全部节点事件，用于回看已完成任务的执行过程。"""
+    """返回任务已落盘的生命周期、业务与节点事件。"""
 
     try:
         return {"items": service.read_task_events(task_id)}
@@ -121,16 +121,3 @@ async def get_analysis_result(
         return service.get_result(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="RESULT_NOT_FOUND") from exc
-
-
-@router.get("/schemas/po_order/{schema_version}")
-async def get_po_order_schema(
-    schema_version: str,
-    service: Annotated[AnalysisService, Depends(get_analysis_service)],
-) -> dict[str, Any]:
-    """返回第一阶段目标字段 key 列表。"""
-
-    try:
-        return service.get_target_schema(schema_version)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="SCHEMA_NOT_FOUND") from exc

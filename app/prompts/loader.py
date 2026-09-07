@@ -13,3 +13,10 @@ def load_po_order_vision_prompt() -> str:
 
     prompt_path = Path(__file__).with_name("po_order_vision.md")
     return prompt_path.read_text(encoding="utf-8")
+
+
+def load_port_code_proposal_prompt() -> str:
+    """加载港口三字码候选生成提示词。"""
+
+    prompt_path = Path(__file__).with_name("port_code_proposal.md")
+    return prompt_path.read_text(encoding="utf-8")

@@ -268,7 +268,7 @@ function renderEvents(taskEvents, animate = false) {
   const grouped = new Map(
     nodes.map(([key, label]) => [key, { key, label, state: "idle", message: "", duration: null }]),
   );
-  taskEvents.forEach((event) => {
+  taskEvents.filter((event) => event && event.node_name).forEach((event) => {
     if (!grouped.has(event.node_name)) {
       grouped.set(event.node_name, {
         key: event.node_name,
@@ -330,9 +330,11 @@ function renderResult(result, status) {
     return;
   }
   const reviewStatuses = ["needs_review", "conflict", "missing", "invalid"];
-  const reviewFields = Object.entries(result.field_meta || {})
-    .filter(([, meta]) => meta && reviewStatuses.includes(meta.status))
-    .map(([key]) => key);
+  const reviewFields = Array.isArray(result.review_fields)
+    ? result.review_fields
+    : Object.entries(result.field_meta || {})
+        .filter(([, meta]) => meta && reviewStatuses.includes(meta.status))
+        .map(([key]) => key);
   elements.resultSummary.innerHTML = `
     <span class="result-status ${statusClass(status)}">${escapeHtml(statusText(status))}</span>
     <span>置信度 ${Math.round((result.overall_confidence || 0) * 100)}%</span>`;

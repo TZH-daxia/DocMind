@@ -116,4 +116,5 @@ class AnalysisResult(BaseModel):
     overall_status: Literal["ready", "needs_review", "failed"]
     overall_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     field_meta: dict[str, FieldMetadata] = Field(default_factory=dict)
+    review_fields: list[str] = Field(default_factory=list)
     validation: ValidationResult

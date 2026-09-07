@@ -13,17 +13,19 @@ from app.schemas.file import UploadedDocument
 class FileStore:
     """管理配置数据根目录下的所有运行文件。
 
-    目录契约（仅三个）：
+    目录契约：
     - uploaded_documents/<原始文件名>          用户上传的原件；
     - parsed_documents/<task_id>/             单个任务的全部工作文件
       （渲染图片、文本层、VLM 文档、任务状态、事件日志、中间候选 JSON）；
-    - analysis_results/<task_id>.json         最终业务结果。
+    - analysis_results/<task_id>.json         最终业务结果；
+    - reference_cache/                        外部主数据本地缓存（港口 hbinfo）。
     """
 
     DIRECTORY_NAMES = (
         "uploaded_documents",
         "parsed_documents",
         "analysis_results",
+        "reference_cache",
     )
 
     def __init__(self, settings: Settings) -> None:

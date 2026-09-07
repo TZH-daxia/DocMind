@@ -121,9 +121,9 @@ class DeepSeekExtractionAgent:
                 )
                 break
             except Exception as exc:  # noqa: BLE001 - 该结构化方法不可用
-                logger.warning("结构化输出方法 %s 不可用：%s", method, exc)
+                logger.debug("结构化输出方法 %s 不可用：%s", method, exc)
         if self.structured_chain is None:
-            logger.warning("结构化输出不可用，将仅使用 free-form 抽取。")
+            logger.debug("结构化输出不可用，将仅使用 free-form 抽取。")
         self.vision_chain = (
             ChatPromptTemplate.from_messages(
                 [
@@ -183,15 +183,15 @@ class DeepSeekExtractionAgent:
             try:
                 result = await self.structured_chain.ainvoke(variables)
                 candidates = self._schema_to_candidates(result)
-                logger.info("结构化抽取得到候选数：%s", len(candidates))
+                logger.debug("结构化抽取得到候选数：%s", len(candidates))
                 return self._ensure_all_fields(candidates)
             except Exception as exc:  # noqa: BLE001 - 结构化失败则回退
-                logger.warning("结构化抽取失败，回退 free-form：%s", exc)
+                logger.debug("结构化抽取失败，回退 free-form：%s", exc)
         # 2) 回退 free-form：解析模型文本输出（扁平 12 键或旧式信封）。
         last_error: ValueError | None = None
         for attempt in range(2):
             text = await self.extraction_chain.ainvoke(variables)
-            logger.info(
+            logger.debug(
                 "DeepSeek 抽取原始输出（第 %s 次，长度 %s）：%s",
                 attempt + 1,
                 len(text),
@@ -203,7 +203,7 @@ class DeepSeekExtractionAgent:
                 last_error = exc
                 logger.warning("DeepSeek 输出解析失败（第 %s 次）：%s", attempt + 1, exc)
             else:
-                logger.info("DeepSeek 抽取解析得到候选数：%s", len(candidates))
+                logger.debug("DeepSeek 抽取解析得到候选数：%s", len(candidates))
                 return self._ensure_all_fields(candidates)
         raise ValueError(f"模型输出无法解析为 JSON：{last_error}")
 

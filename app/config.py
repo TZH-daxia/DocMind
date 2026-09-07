@@ -16,8 +16,21 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "DocMind"
-    app_env: str = "development"
     api_prefix: str = "/api/v1"
+
+    system_log_file: Path = Field(
+        default=Path("logs/app.log"),
+        validation_alias="DOCMIND_SYSTEM_LOG_FILE",
+    )
+    system_log_level: str = Field(
+        default="INFO",
+        validation_alias="DOCMIND_SYSTEM_LOG_LEVEL",
+    )
+    system_log_retention_days: int = Field(
+        default=14,
+        ge=1,
+        validation_alias="DOCMIND_SYSTEM_LOG_RETENTION_DAYS",
+    )
 
     review_confidence_threshold: float = 0.6
 
@@ -29,6 +42,11 @@ class Settings(BaseSettings):
     deepseek_max_retries: int = 1
 
     docmind_data_root: Path = Field(default=Path("data"), validation_alias="DOCMIND_DATA_ROOT")
+    # 港口主数据接口（poOrder PublicWebApi）根地址，如 http://<host>/PublicWebApi/；
+    # 为空时禁用始发港/到达港三字码归一化
+    port_api_base: str = Field(default="", validation_alias="DOCMIND_PORT_API_BASE")
+    # 港口主数据本地缓存有效期（小时），过期后重新拉取
+    port_cache_ttl_hours: float = 24.0
     max_file_size_bytes: int = 200 * 1024 * 1024
     allowed_extensions: tuple[str, ...] = (".doc", ".xls", ".pdf")
 
