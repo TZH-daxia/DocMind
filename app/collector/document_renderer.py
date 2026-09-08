@@ -1,28 +1,40 @@
 """本地文档渲染：把 .pdf/.doc/.xls 转为页面图片，替代 MinerU 解析。
 
 - .pdf 直接用 PyMuPDF 光栅化；
-- .doc/.xls 通过 Office COM 导出 PDF 后光栅化，XLS 导出前做合并单元格行高修正防止裁切；
-- .xls 在 COM 不可用时回退为纯 Python 合成表格图（xlrd + Pillow，零 Office 依赖）。
+- .doc 用 LibreOffice headless 导出 PDF（跨平台，不依赖 MS Office，可迁 Linux）；
+- .xls 优先经 LibreOffice UNO 展开隐藏行列、修正合并单元格行高后导出 PDF，
+  失败时回退普通 LibreOffice CLI 转换；
+- .xls 在 LibreOffice 完全不可用时回退为纯 Python 合成表格图（xlrd + Pillow）。
 """
 
 import logging
+import os
+import shutil
+import socket
+import subprocess
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.config import Settings
 from app.storage.file_store import FileStore
 
 logger = logging.getLogger(__name__)
 
 MAX_PAGES = 10
 DPI = 200
+LIBREOFFICE_TIMEOUT_SECONDS = 180
 FONT_CANDIDATES = (
     r"C:\Windows\Fonts\msyh.ttc",
     r"C:\Windows\Fonts\simsun.ttc",
     r"C:\Windows\Fonts\simhei.ttf",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
 )
-# Excel 垂直对齐常量：顶端（-4160）。底端对齐的合并单元格在高度不足时会从顶部裁切内容。
-XL_VERTICAL_ALIGN_TOP = -4160
 
 
 @dataclass(frozen=True)
@@ -39,8 +51,9 @@ class RenderedDocument:
 class LocalDocumentRenderer:
     """把上传文档渲染成页面图片，供 VLM 直接读取。"""
 
-    def __init__(self, file_store: FileStore) -> None:
+    def __init__(self, file_store: FileStore, settings: Settings) -> None:
         self.file_store = file_store
+        self.settings = settings
 
     def render(self, source_path: Path, source_name: str, task_id: str) -> RenderedDocument:
         """渲染单份文档，返回页面图片与文本层。"""
@@ -55,10 +68,31 @@ class LocalDocumentRenderer:
         pdf_path = source_path
         if suffix in {".doc", ".xls"}:
             try:
-                pdf_path, converter = self._office_to_pdf(source_path, out_dir, stem, suffix)
-            except (ImportError, OSError, RuntimeError) as exc:
+                if suffix == ".xls":
+                    try:
+                        pdf_path, converter = self._xls_to_pdf_libreoffice(
+                            source_path, out_dir, stem
+                        )
+                    except (OSError, RuntimeError, subprocess.SubprocessError) as uno_error:
+                        logger.warning(
+                            "LibreOffice UNO 行高修正导出失败，回退普通转换：%s", uno_error
+                        )
+                        pdf_path, converter = self._office_to_pdf_libreoffice(
+                            source_path, out_dir, stem
+                        )
+                else:
+                    pdf_path, converter = self._office_to_pdf_libreoffice(
+                        source_path, out_dir, stem
+                    )
+            except (OSError, RuntimeError, subprocess.SubprocessError) as libreoffice_error:
                 if suffix != ".xls":
-                    raise RuntimeError(f"LOCAL_RENDER_OFFICE_REQUIRED: {exc}") from exc
+                    raise RuntimeError(
+                        f"LOCAL_RENDER_LIBREOFFICE_REQUIRED: {libreoffice_error}"
+                    ) from libreoffice_error
+                logger.warning(
+                    "LibreOffice 转 PDF 失败，XLS 回退纯 Python 合成图：%s",
+                    libreoffice_error,
+                )
                 converter = "synthetic"
         image_paths, page_count = self._render_pages(pdf_path, out_dir, stem)
         if converter == "synthetic":
@@ -81,121 +115,209 @@ class LocalDocumentRenderer:
             page_count=page_count,
         )
 
-    def _office_to_pdf(
+    def _resolve_soffice_path(self) -> Path:
+        """定位 soffice 可执行文件：配置优先，其次 PATH 与常见安装位置。"""
+
+        if self.settings.libreoffice_path:
+            configured = Path(self.settings.libreoffice_path)
+            if configured.is_file():
+                return configured
+            raise RuntimeError(
+                f"LIBREOFFICE_NOT_FOUND: DOCMIND_SOFFICE_PATH 指向的文件不存在：{configured}"
+            )
+        found = shutil.which("soffice")
+        if found:
+            return Path(found)
+        candidates = (
+            *[Path(drive) / "program" / "soffice.exe" for drive in (
+                r"C:\Program Files\LibreOffice",
+                r"C:\Program Files (x86)\LibreOffice",
+            )],
+            Path("/usr/bin/soffice"),
+            Path("/usr/local/bin/soffice"),
+            Path("/opt/libreoffice/program/soffice"),
+        )
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        raise RuntimeError(
+            "LIBREOFFICE_NOT_FOUND: 未找到 soffice，请安装 LibreOffice "
+            "或通过 DOCMIND_SOFFICE_PATH 指定可执行文件路径"
+        )
+
+    def _xls_to_pdf_libreoffice(
         self,
         source_path: Path,
         out_dir: Path,
         stem: str,
-        suffix: str,
     ) -> tuple[Path, str]:
-        """通过 Office COM 把 doc/xls 导出为 PDF，XLS 先做行高修正。"""
+        """XLS 专用：先经 UNO 修正合并单元格行高，再导出 PDF（保真主路径）。
 
-        try:
-            import pythoncom  # type: ignore[import-untyped]
-            import win32com.client  # type: ignore[import-untyped,import-not-found]
-        except ImportError as exc:
-            raise RuntimeError("pywin32 不可用") from exc
-
-        pdf_path = out_dir / f"{stem}_converted.pdf"
-        program = "Word.Application" if suffix == ".doc" else "Excel.Application"
-        # COM 必须在调用线程上初始化（asyncio.to_thread 的工作线程默认未初始化）
-        pythoncom.CoInitialize()
-        try:
-            app: Any = win32com.client.DispatchEx(program)
-            app.Visible = False
-            app.DisplayAlerts = False
-            try:
-                if suffix == ".xls":
-                    workbook = app.Workbooks.Open(str(source_path), ReadOnly=True)
-                    for sheet in workbook.Worksheets:
-                        self._fix_merged_row_heights(sheet)
-                    workbook.ExportAsFixedFormat(0, str(pdf_path))
-                    workbook.Close(False)
-                    return pdf_path, "excel_com"
-                document = app.Documents.Open(str(source_path), ReadOnly=True)
-                document.ExportAsFixedFormat(OutputFileName=str(pdf_path), ExportFormat=17)
-                document.Close(False)
-                return pdf_path, "word_com"
-            finally:
-                try:
-                    app.Quit()
-                except Exception as quit_error:  # noqa: BLE001 - COM 退出失败不影响产物
-                    logger.debug("Office COM 退出失败：%s", quit_error)
-        finally:
-            pythoncom.CoUninitialize()
-
-    @staticmethod
-    def _fix_merged_row_heights(sheet: Any) -> None:
-        """AutoFit 对合并单元格无效，手动按文字量把高度差额补到区域末行。
-
-        合并单元格垂直底端对齐时，区域高度不足会从顶部裁切内容（地址块首行的公司名
-        就是这样丢的），因此统一改为顶端对齐；行高只增不减，避免 AutoFit 压缩原表
-        已调好的行高，反而让内容溢出。
+        直接 --convert-to 导出时，高度不足的合并单元格内容会被裁切
+        （与当年 COM 行高修正针对的问题相同），因此 XLS 走 UNO 流程。
         """
 
-        used = sheet.UsedRange
-        # MergeCells 为 False 表示整表没有合并单元格；混合内容为 None，需继续扫描。
-        if used.MergeCells is False:
-            logger.debug("工作表没有合并单元格，跳过行高修正")
-            return
-        for area in LocalDocumentRenderer._collect_merge_areas(used):
-            LocalDocumentRenderer._fix_area_row_height(sheet, area)
-
-    @staticmethod
-    def _collect_merge_areas(used: Any) -> list[Any]:
-        """收集 UsedRange 中不重复的合并区域，已被区域覆盖的列直接跳过。"""
-
-        seen: set[str] = set()
-        areas: list[Any] = []
-        for row in range(1, used.Rows.Count + 1):
-            col = 1
-            while col <= used.Columns.Count:
-                cell = used.Cells(row, col)
-                if not cell.MergeCells:
-                    col += 1
-                    continue
-                area = cell.MergeArea
-                address = str(area.Address)
-                if address not in seen:
-                    seen.add(address)
-                    areas.append(area)
-                col += area.Columns.Count
-        return areas
-
-    @staticmethod
-    def _fix_area_row_height(sheet: Any, area: Any) -> None:
-        """补足单个合并区域的高度，保持顶端对齐且不压缩原有行高。"""
-
-        address = str(area.Address)
-        top = area.Row
-        bottom = top + area.Rows.Count - 1
-        first_col = area.Column
-        area.VerticalAlignment = XL_VERTICAL_ALIGN_TOP
-        total_width = sum(
-            sheet.Columns(i).ColumnWidth
-            for i in range(first_col, first_col + area.Columns.Count)
+        soffice = self._resolve_soffice_path()
+        lo_python = soffice.parent / ("python.exe" if os.name == "nt" else "python")
+        if not lo_python.is_file():
+            raise RuntimeError(
+                f"LIBREOFFICE_UNO_UNAVAILABLE: 未找到 LibreOffice 自带 Python：{lo_python}"
+            )
+        script_path = Path(__file__).with_name("lo_xls_height_fix.py")
+        pdf_path = out_dir / f"{stem}_converted.pdf"
+        self._remove_stale_lock(source_path)
+        port = self._free_port()
+        profile_dir = Path(tempfile.mkdtemp(prefix="docmind_lo_"))
+        process = subprocess.Popen(
+            [
+                str(soffice),
+                "--headless",
+                "--norestore",
+                "--nologo",
+                f"-env:UserInstallation={profile_dir.as_uri()}",
+                f"--accept=socket,host=127.0.0.1,port={port};urp;",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        original_height = sheet.Rows(top).RowHeight
-        area.UnMerge()
-        original_width = sheet.Columns(first_col).ColumnWidth
-        sheet.Columns(first_col).ColumnWidth = max(total_width, 5)
-        sheet.Rows(top).AutoFit()
-        needed = sheet.Rows(top).RowHeight
-        sheet.Columns(first_col).ColumnWidth = original_width
-        sheet.Rows(top).RowHeight = original_height
-        merged = sheet.Range(address)
-        merged.Merge()
-        merged.VerticalAlignment = XL_VERTICAL_ALIGN_TOP
-        current = sum(sheet.Rows(i).RowHeight for i in range(top, bottom + 1))
-        if needed > current:
-            sheet.Rows(bottom).RowHeight += needed - current
+        try:
+            self._wait_for_port(port, timeout_seconds=60.0)
+            completed = subprocess.run(
+                [
+                    str(lo_python),
+                    str(script_path),
+                    str(port),
+                    str(source_path),
+                    str(pdf_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=LIBREOFFICE_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if completed.returncode != 0 or not pdf_path.exists():
+                detail = (completed.stderr or completed.stdout or "").strip()
+                raise RuntimeError(f"LIBREOFFICE_UNO_FAILED: {detail}")
+        finally:
+            self._stop_soffice(process)
+            shutil.rmtree(profile_dir, ignore_errors=True)
+        return pdf_path, "libreoffice_uno"
+
+    @staticmethod
+    def _remove_stale_lock(source_path: Path) -> None:
+        """清理上次 soffice 异常退出遗留的文档锁，否则加载会静默失败。"""
+
+        lock_path = source_path.parent / f".~lock.{source_path.name}#"
+        try:
+            lock_path.unlink()
+            logger.warning("已清理残留的 LibreOffice 锁文件：%s", lock_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("清理 LibreOffice 锁文件失败：%s", exc)
+
+    @staticmethod
+    def _free_port() -> int:
+        """申请一个临时的本机空闲端口供 UNO socket 使用。"""
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
+
+    @staticmethod
+    def _wait_for_port(port: int, timeout_seconds: float) -> None:
+        """等待 soffice 的 UNO socket 开始监听。"""
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                    return
+            except OSError:
+                time.sleep(0.3)
+        raise RuntimeError(
+            f"LIBREOFFICE_UNO_TIMEOUT: soffice 未在 {timeout_seconds}s 内监听端口"
+        )
+
+    @staticmethod
+    def _stop_soffice(process: subprocess.Popen[Any]) -> None:
+        """结束本次转换拉起的 soffice 进程（含子进程）。"""
+
+        if process.poll() is not None:
+            return
+        if os.name == "nt":
+            # soffice.exe 会派生 soffice.bin，需整树结束避免残留进程
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+            )
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    def _office_to_pdf_libreoffice(
+        self,
+        source_path: Path,
+        out_dir: Path,
+        stem: str,
+    ) -> tuple[Path, str]:
+        """用 LibreOffice headless 把 doc/xls 统一转换为 PDF（跨平台主路径）。
+
+        使用独立 UserInstallation 临时配置目录，避免与本机正在运行的
+        LibreOffice 实例冲突导致转换静默失败。
+        """
+
+        soffice = self._resolve_soffice_path()
+        profile_dir = Path(tempfile.mkdtemp(prefix="docmind_lo_"))
+        command = [
+            str(soffice),
+            "--headless",
+            "--norestore",
+            f"-env:UserInstallation={profile_dir.as_uri()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(out_dir),
+            str(source_path),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=LIBREOFFICE_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"LIBREOFFICE_TIMEOUT: 转换超过 {LIBREOFFICE_TIMEOUT_SECONDS}s"
+            ) from exc
+        finally:
+            shutil.rmtree(profile_dir, ignore_errors=True)
+        produced = out_dir / f"{source_path.stem}.pdf"
+        if completed.returncode != 0 or not produced.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise RuntimeError(f"LIBREOFFICE_CONVERT_FAILED: {detail}")
+        pdf_path = out_dir / f"{stem}_converted.pdf"
+        produced.replace(pdf_path)
+        return pdf_path, "libreoffice"
 
     def _render_pages(self, pdf_path: Path, out_dir: Path, stem: str) -> tuple[list[Path], int]:
-        """光栅化 PDF 页面（上限 MAX_PAGES），返回图片路径列表。"""
+        """光栅化 PDF 页面（上限 MAX_PAGES），过滤近空白页后返回图片路径列表。
+
+        LibreOffice 导出的是整个工作簿：宽表横向溢出、附带 sheet 都会产生
+        几乎空白的页面，送 VLM 只会增加噪音，因此按非白像素占比过滤。
+        """
 
         import pymupdf
 
+        threshold = self.settings.render_blank_page_ratio
         image_paths: list[Path] = []
+        first_page: Path | None = None
         with pymupdf.open(pdf_path) as document:
             for index, page in enumerate(document):
                 if index >= MAX_PAGES:
@@ -203,9 +325,31 @@ class LocalDocumentRenderer:
                 pixmap = page.get_pixmap(dpi=DPI)
                 image_path = out_dir / f"{stem}_page_{index + 1:03d}.png"
                 pixmap.save(image_path)
+                if first_page is None:
+                    first_page = image_path
+                if self._is_near_blank(image_path, threshold):
+                    logger.debug("近空白页已过滤：%s", image_path.name)
+                    image_path.unlink()
+                    continue
                 image_paths.append(image_path)
-            page_count = min(len(document), MAX_PAGES)
-        return image_paths, page_count
+        if not image_paths and first_page is not None:
+            logger.warning("所有页面均为近空白，保留首页：%s", first_page.name)
+            image_paths.append(first_page)
+        return image_paths, len(image_paths)
+
+    @staticmethod
+    def _is_near_blank(image_path: Path, threshold: float) -> bool:
+        """按非白像素占比（灰度 < 250）判断页面是否近空白。"""
+
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            histogram = image.convert("L").histogram()
+        total = sum(histogram)
+        if total == 0:
+            return False
+        non_white = sum(histogram[:250])
+        return non_white / total < threshold
 
     def _xls_synthetic_images(self, xls_path: Path, out_dir: Path, stem: str) -> tuple[list[Path], int]:
         """无 Office 兜底：用 Pillow 按单元格数据重建表格图（内容无损）。"""

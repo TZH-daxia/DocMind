@@ -1,0 +1,366 @@
+2026-09-07 16:43:43 INFO uvicorn.error [pid=17112] Started server process [17112]
+2026-09-07 16:43:43 INFO uvicorn.error [pid=17112] Waiting for application startup.
+2026-09-07 16:43:43 INFO uvicorn.error [pid=17112] Application startup complete.
+2026-09-07 16:44:40 INFO uvicorn.error [pid=17112] Shutting down
+2026-09-07 16:44:40 INFO uvicorn.error [pid=17112] Waiting for application shutdown.
+2026-09-07 16:44:40 INFO uvicorn.error [pid=17112] Application shutdown complete.
+2026-09-07 16:44:40 INFO uvicorn.error [pid=17112] Finished server process [17112]
+2026-09-07 16:44:42 INFO uvicorn.error [pid=1144] Started server process [1144]
+2026-09-07 16:44:42 INFO uvicorn.error [pid=1144] Waiting for application startup.
+2026-09-07 16:44:42 INFO uvicorn.error [pid=1144] Application startup complete.
+2026-09-07 16:49:02 INFO uvicorn.error [pid=1144] Shutting down
+2026-09-07 16:49:02 INFO uvicorn.error [pid=1144] Waiting for application shutdown.
+2026-09-07 16:49:02 INFO uvicorn.error [pid=1144] Application shutdown complete.
+2026-09-07 16:49:02 INFO uvicorn.error [pid=1144] Finished server process [1144]
+2026-09-07 16:49:05 INFO uvicorn.error [pid=9940] Started server process [9940]
+2026-09-07 16:49:05 INFO uvicorn.error [pid=9940] Waiting for application startup.
+2026-09-07 16:49:05 INFO uvicorn.error [pid=9940] Application startup complete.
+2026-09-07 16:49:56 INFO uvicorn.error [pid=9940] Shutting down
+2026-09-07 16:49:56 INFO uvicorn.error [pid=9940] Waiting for application shutdown.
+2026-09-07 16:49:56 INFO uvicorn.error [pid=9940] Application shutdown complete.
+2026-09-07 16:49:56 INFO uvicorn.error [pid=9940] Finished server process [9940]
+2026-09-07 16:49:59 INFO uvicorn.error [pid=15560] Started server process [15560]
+2026-09-07 16:49:59 INFO uvicorn.error [pid=15560] Waiting for application startup.
+2026-09-07 16:49:59 INFO uvicorn.error [pid=15560] Application startup complete.
+2026-09-07 16:50:15 INFO app.logging_check [pid=16672] system logging initialized
+2026-09-07 16:55:11 INFO uvicorn.error [pid=15560] Shutting down
+2026-09-07 16:55:11 INFO uvicorn.error [pid=15560] Waiting for application shutdown.
+2026-09-07 16:55:11 INFO uvicorn.error [pid=15560] Application shutdown complete.
+2026-09-07 16:55:11 INFO uvicorn.error [pid=15560] Finished server process [15560]
+2026-09-07 16:55:16 INFO uvicorn.error [pid=15076] Started server process [15076]
+2026-09-07 16:55:16 INFO uvicorn.error [pid=15076] Waiting for application startup.
+2026-09-07 16:55:16 INFO uvicorn.error [pid=15076] Application startup complete.
+2026-09-07 16:59:51 INFO uvicorn.access [pid=15076] 127.0.0.1:62556 - "GET / HTTP/1.1" 200
+2026-09-07 16:59:51 INFO uvicorn.access [pid=15076] 127.0.0.1:62556 - "GET /static/styles.css HTTP/1.1" 304
+2026-09-07 16:59:51 INFO uvicorn.access [pid=15076] 127.0.0.1:55709 - "GET /static/app.js HTTP/1.1" 200
+2026-09-07 16:59:51 INFO uvicorn.access [pid=15076] 127.0.0.1:49924 - "GET /static/api.js HTTP/1.1" 304
+2026-09-07 16:59:51 INFO langchain_openai.chat_models._client_utils [pid=15076] langchain-openai detected system proxy configuration and no explicit `http_socket_options` / `http_client` / `http_async_client` / `openai_proxy`; skipping the custom `httpx` transport so httpx's env-proxy auto-detection applies. Pass `http_socket_options=[...]` to opt back into kernel-level TCP keepalive tuning on top of the env proxy.
+2026-09-07 16:59:51 INFO uvicorn.access [pid=15076] 127.0.0.1:55709 - "GET /api/v1/analysis/files HTTP/1.1" 200
+2026-09-07 17:00:16 INFO uvicorn.access [pid=15076] 127.0.0.1:62649 - "GET / HTTP/1.1" 200
+2026-09-07 17:00:16 INFO uvicorn.access [pid=15076] 127.0.0.1:62649 - "GET /api/v1/analysis/files HTTP/1.1" 200
+2026-09-07 17:00:30 INFO uvicorn.error [pid=15076] Shutting down
+2026-09-07 17:00:30 INFO uvicorn.error [pid=15076] Waiting for application shutdown.
+2026-09-07 17:00:30 INFO uvicorn.error [pid=15076] Application shutdown complete.
+2026-09-07 17:00:30 INFO uvicorn.error [pid=15076] Finished server process [15076]
+2026-09-07 17:00:35 INFO uvicorn.error [pid=15900] Started server process [15900]
+2026-09-07 17:00:35 INFO uvicorn.error [pid=15900] Waiting for application startup.
+2026-09-07 17:00:35 INFO uvicorn.error [pid=15900] Application startup complete.
+2026-09-07 17:01:55 INFO langchain_openai.chat_models._client_utils [pid=15900] langchain-openai detected system proxy configuration and no explicit `http_socket_options` / `http_client` / `http_async_client` / `openai_proxy`; skipping the custom `httpx` transport so httpx's env-proxy auto-detection applies. Pass `http_socket_options=[...]` to opt back into kernel-level TCP keepalive tuning on top of the env proxy.
+2026-09-07 17:01:55 INFO uvicorn.access [pid=15900] 127.0.0.1:61943 - "POST /api/v1/analysis/tasks HTTP/1.1" 202
+2026-09-07 17:01:55 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=render_document event=started
+2026-09-07 17:01:55 INFO app.workflow.node_runner [pid=15900] 工作流节点开始执行：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=render_document
+2026-09-07 17:01:55 INFO uvicorn.access [pid=15900] 127.0.0.1:61943 - "GET /api/v1/analysis/files HTTP/1.1" 200
+2026-09-07 17:01:56 INFO uvicorn.access [pid=15900] 127.0.0.1:61943 - "GET /api/v1/analysis/tasks/task_20260907_170155_B-68046_%E6%89%98%E5%8D%95_2a7966bd/events HTTP/1.1" 200
+2026-09-07 17:01:56 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=render_document event=succeeded
+2026-09-07 17:01:56 INFO app.workflow.node_runner [pid=15900] 工作流节点执行成功：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=render_document duration_ms=289
+2026-09-07 17:01:56 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=read_images_with_vlm event=started
+2026-09-07 17:01:56 INFO app.workflow.node_runner [pid=15900] 工作流节点开始执行：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=read_images_with_vlm
+2026-09-07 17:01:56 INFO httpx2 [pid=15900] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-09-07 17:02:09 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=read_images_with_vlm event=succeeded
+2026-09-07 17:02:09 INFO app.workflow.node_runner [pid=15900] 工作流节点执行成功：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=read_images_with_vlm duration_ms=13758
+2026-09-07 17:02:09 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=extract_candidates event=started
+2026-09-07 17:02:09 INFO app.workflow.node_runner [pid=15900] 工作流节点开始执行：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=extract_candidates
+2026-09-07 17:02:09 INFO httpx2 [pid=15900] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 400 Bad Request"
+2026-09-07 17:02:09 WARNING app.agent.deepseek_extractor [pid=15900] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-07 17:02:10 INFO httpx2 [pid=15900] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-09-07 17:13:03 INFO app.main [pid=7120] DocMind application started
+2026-09-07 17:13:03 INFO app.main [pid=7120] DocMind application stopped
+2026-09-07 17:03:07 INFO app.agent.deepseek_extractor [pid=15900] DeepSeek 抽取原始输出（第 1 次，长度 2420）：{
+  "sfg": {
+    "value": "SHANGHAI",
+    "status": "confirmed",
+    "confidence": 0.99,
+    "evidence": [{"quote": "装运港： SHANGHAI"}],
+    "extraction_method": "llm"
+  },
+  "mdg": {
+    "value": "FRANKFURT",
+    "status": "confirmed",
+    "confidence": 0.99,
+    "evidence": [{"quote": "目的港： FRANKFURT"}],
+    "extraction_method": "llm"
+  },
+  "ybpiece": {
+    "value": 1,
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "1PLT"}],
+    "extraction_method": "llm"
+  },
+  "ybweight": {
+    "value": 168,
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "168KGS"}],
+    "extraction_method": "llm"
+  },
+  "ybvolume": {
+    "value": 0.78,
+    "status": "conflict",
+    "confidence": 0.6,
+    "evidence": [
+      {"quote": "体积(CBM)： 0.780CMB"},
+      {"quote": "1.2CBM"}
+    ],
+    "extraction_method": "llm"
+  },
+  "inwageallinprice": {
+    "value": null,
+    "status": "missing",
+    "confidence": 0.0,
+    "evidence": [],
+    "extraction_method": "llm"
+  },
+  "hbrq": {
+    "value": null,
+    "status": "needs_review",
+    "confidence": 0.8,
+    "evidence": [{"quote": "船期： 2026/09/28~2026/10/05"}],
+    "extraction_method": "llm"
+  },
+  "fid": {
+    "value": null,
+    "status": "missing",
+    "confidence": 0.0,
+    "evidence": [],
+    "extraction_method": "llm"
+  },
+  "shipper": {
+    "value": {
+      "name": "Clea International Trading Limited",
+      "address": "18/F, NAM WO HONG BUILDING, 148 WING LOK STREET, SHEUNG WAN, HK"
+    },
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "Clea International Trading Limited\n18/F, NAM WO HONG BUILDING, 148 WING LOK STREET, SHEUNG WAN, HK"}],
+    "extraction_method": "llm"
+  },
+  "consignee": {
+    "value": {
+      "name": "Grizzly Tools GmbH & Co. KG",
+      "address": "Stockstadter Straße 20, 63762 Großostheim, Germany"
+    },
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "Grizzly Tools GmbH & Co. KG\nStockstadter Straße 20,\n63762 Großostheim, Germany"}],
+    "extraction_method": "llm"
+  },
+  "chinesepm": {
+    "value": "手推式电动割草机",
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "手推式电动割草机"}],
+    "extraction_method": "llm"
+  },
+  "englishpm": {
+    "value": "LAWN MOWER",
+    "status": "normalized",
+    "confidence": 0.98,
+    "evidence": [{"quote": "LAWN MOWER"}],
+    "extraction_method": "llm"
+  }
+}
+2026-09-07 17:15:10 INFO app.agent.deepseek_extractor [pid=15900] DeepSeek 抽取解析得到候选数：12
+2026-09-07 17:15:10 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=extract_candidates event=succeeded
+2026-09-07 17:15:10 INFO app.workflow.node_runner [pid=15900] 工作流节点执行成功：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=extract_candidates duration_ms=780918
+2026-09-07 17:15:10 INFO uvicorn.error [pid=15900] Shutting down
+2026-09-07 17:15:10 INFO app.service.analysis_service [pid=15900] 工作流节点事件：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=build_result event=started
+2026-09-07 17:15:10 INFO app.workflow.node_runner [pid=15900] 工作流节点开始执行：task_id=task_20260907_170155_B-68046_托单_2a7966bd node=build_result
+2026-09-07 17:15:10 INFO uvicorn.access [pid=15900] 127.0.0.1:53081 - "GET / HTTP/1.1" 200
+2026-09-07 17:15:10 INFO uvicorn.access [pid=15900] 127.0.0.1:53081 - "GET /static/app.js HTTP/1.1" 304
+2026-09-07 17:15:10 INFO uvicorn.access [pid=15900] 127.0.0.1:53081 - "GET /api/v1/analysis/files HTTP/1.1" 200
+2026-09-07 17:15:10 INFO httpx2 [pid=15900] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 400 Bad Request"
+2026-09-07 17:15:10 WARNING app.agent.port_normalizer [pid=15900] 结构化输出 json_schema 不可用，回退自由文本：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-07 17:15:10 INFO httpx2 [pid=15900] HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-09-07 17:15:15 INFO uvicorn.error [pid=15900] Finished server process [15900]
+2026-09-07 17:15:15 ERROR uvicorn.error [pid=15900] Traceback (most recent call last):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 674, in run_until_complete
+    self.run_forever()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 641, in run_forever
+    self._run_once()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1987, in _run_once
+    handle._run()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 80, in serve
+    with self.capture_signals():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 340, in capture_signals
+    signal.raise_signal(captured_signal)
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 157, in _on_sigint
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\routing.py", line 655, in lifespan
+    await receive()
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+2026-09-07 17:15:18 INFO app.main [pid=18836] DocMind application started
+2026-09-07 17:15:18 INFO app.main [pid=18836] DocMind application stopped
+2026-09-07 17:15:18 ERROR uvicorn.error [pid=18836] Traceback (most recent call last):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 674, in run_until_complete
+    self.run_forever()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 641, in run_forever
+    self._run_once()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1987, in _run_once
+    handle._run()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 80, in serve
+    with self.capture_signals():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 340, in capture_signals
+    signal.raise_signal(captured_signal)
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 157, in _on_sigint
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\routing.py", line 655, in lifespan
+    await receive()
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+2026-09-07 17:15:23 INFO app.main [pid=14628] DocMind application started
+2026-09-07 17:23:01 INFO app.main [pid=14628] DocMind application stopped
+2026-09-07 17:23:01 ERROR uvicorn.error [pid=14628] Traceback (most recent call last):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 674, in run_until_complete
+    self.run_forever()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 641, in run_forever
+    self._run_once()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1987, in _run_once
+    handle._run()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 80, in serve
+    with self.capture_signals():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 340, in capture_signals
+    signal.raise_signal(captured_signal)
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 157, in _on_sigint
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\routing.py", line 655, in lifespan
+    await receive()
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\lifespan\on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+2026-09-07 17:23:01 ERROR uvicorn.error [pid=14628] Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 674, in run_until_complete
+    self.run_forever()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 641, in run_forever
+    self._run_once()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 1987, in _run_once
+    handle._run()
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 80, in serve
+    with self.capture_signals():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 144, in __exit__
+    next(self.gen)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\server.py", line 340, in capture_signals
+    signal.raise_signal(captured_signal)
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 157, in _on_sigint
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 416, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\routing.py", line 670, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\fastapi\routing.py", line 145, in app
+    await response(scope, receive, send)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\responses.py", line 273, in __call__
+    async with create_collapsing_task_group() as task_group:
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 217, in __aexit__
+    await anext(self.gen)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\starlette\_utils.py", line 85, in create_collapsing_task_group
+    async with anyio.create_task_group() as tg:
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 851, in __aexit__
+    raise exc_val
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 820, in __aexit__
+    await self._on_completed_fut
+asyncio.exceptions.CancelledError

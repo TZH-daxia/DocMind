@@ -46,7 +46,8 @@
 统一使用 **local 渲染链路**，上传文件即自动运行（无手动重跑）：
 
 ```text
-render_document（PDF→PyMuPDF / DOC→Word COM / XLS→Excel COM 行高修正，转页面图片）
+render_document（PDF→PyMuPDF 直接光栅化 / DOC、XLS→LibreOffice 转 PDF 后光栅化，
+                 XLS 导出前自动展开隐藏行列、修正合并单元格行高，近空白页自动过滤）
   ↓
 read_images_with_vlm（VLM 直读页面图片，逐字转写为视觉理解文档）
   ↓
@@ -55,13 +56,18 @@ extract_candidates（DeepSeek 按 PoOrderExtraction Schema 结构化抽取 12 �
 build_result（按候选置信度生成结果：值原样保留，低于阈值标记待人工审核）
 ```
 
+渲染降级链（XLS）：LibreOffice UNO 修正导出 → LibreOffice CLI 直接转换 → 纯 Python
+合成表格图（xlrd + Pillow，零 LibreOffice 依赖）。
+
 模型抽取结果不做标准化/校验/冲突重判，仅按置信度阈值（`review_confidence_threshold`，
 默认 0.6）判定字段是否需要人工审核，避免准确结果被下游规则误过滤为空值。
 
 ## 快速开始
 
-环境要求：Windows（DOC/XLS 渲染依赖本机 Office；无 Office 时 XLS 自动降级为纯 Python
-合成表格图）、[uv](https://docs.astral.sh/uv/)、Python 3.12。
+环境要求：[uv](https://docs.astral.sh/uv/)、Python 3.12、**LibreOffice**
+（DOC/XLS 转 PDF，Windows 安装后自动探测，Linux 用 `apt install libreoffice`）。
+跨平台可用，不依赖 MS Office / pywin32；无 LibreOffice 时 XLS 自动降级为纯 Python
+合成表格图（.doc 则报错提示安装）。
 
 ```bash
 # 1. 安装依赖
@@ -84,6 +90,21 @@ uv run uvicorn app.main:app --port 8001 --reload
 | `http://127.0.0.1:8001/` | 内置分析前端（拖拽上传即自动运行、节点时间线、查看结果） |
 | `http://127.0.0.1:8001/docs` | OpenAPI 接口文档 |
 | `http://127.0.0.1:8001/health` | 健康检查 |
+
+## 配置
+
+通过 `.env` 或环境变量配置（完整项见 `.env.example`），渲染与转换相关的关键项：
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `DOCMIND_SOFFICE_PATH` | 空（自动探测） | LibreOffice `soffice` 可执行路径；留空按 PATH 与常见安装位置探测 |
+| `DOCMIND_RENDER_BLANK_PAGE_RATIO` | `0.005` | 近空白页过滤阈值（非白像素占比），设 `0` 关闭过滤 |
+| `DOCMIND_RELOAD` | `0`（关闭） | 热重载默认关闭：reload 会中断在途分析任务；调试时显式设 `1` |
+| `DOCMIND_CONSOLE_LOG` | `0`（关闭） | 控制台日志开关，默认只写 `logs/app.log`（写 stdout 管道可能阻塞事件循环） |
+
+`converter` 字段（`render_meta.json` / `task_status.json`）记录实际使用的渲染路径：
+`pymupdf` / `libreoffice_uno`（含行列展开与行高修正）/ `libreoffice`（CLI 直接转换）/
+`synthetic`（纯 Python 合成图兜底）。
 
 ## 数据目录契约
 
@@ -172,6 +193,7 @@ app/
     nodes/         render_document / read_images_with_vlm / extract_candidates / build_result
   agent/           deepseek_extractor.py（结构化抽取 + free-form 回退、VLM 调用）
   collector/       document_renderer.py 本地文档渲染（PDF/DOC/XLS → 页面图片）
+                   lo_xls_height_fix.py LibreOffice UNO 脚本（隐藏行列展开、合并单元格行高修正）
   schemas/         Pydantic 模型（po_order 字段目录、analysis 候选/结果、file 上传）
   storage/         本地文件存储（data/ 三目录契约）
   prompts/         提示词文件（视觉理解、字段抽取）
@@ -190,8 +212,11 @@ uv run mypy app          # 类型检查
 
 - 所有文件读写经 `app/storage`，路径基于 `DOCMIND_DATA_ROOT`，`data/` 只保留
   uploaded_documents / parsed_documents / analysis_results 三个目录；
-- 文档渲染经 `app/collector/document_renderer.py`：页面上限 10 页，VLM 输入为每页整页图
-  外加首页四象限放大图（保证小字号可辨认）；
+- 文档渲染经 `app/collector/document_renderer.py`：页面上限 10 页、光栅化 200 DPI，
+  近空白页（非白像素占比低于阈值）自动过滤不送 VLM；VLM 输入上限 6 张图：
+  每页整页图，第一页额外附上下两半放大图（12% 重叠，保证小字号可辨认）；
+- XLS 渲染前由 LibreOffice UNO 脚本（`app/collector/lo_xls_height_fix.py`）展开
+  隐藏行列、修正合并单元格行高，避免合并区域内容被裁切；
 - 提示词只存在于 `app/prompts/`，不在代码中内联；
 - API → Service → Storage/Collector 单向依赖；Workflow 节点通过 `WorkflowHandlers`
   回调 Service 方法，节点本身不直接触碰存储；

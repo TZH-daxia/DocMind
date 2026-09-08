@@ -43,7 +43,7 @@ class AnalysisService(WorkflowEventPublisher):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.file_store = FileStore(settings)
-        self.renderer = LocalDocumentRenderer(self.file_store)
+        self.renderer = LocalDocumentRenderer(self.file_store, settings)
         self.deepseek = DeepSeekExtractionAgent(settings)
         # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
@@ -289,14 +289,8 @@ class AnalysisService(WorkflowEventPublisher):
             )
 
     def publish(self, event: WorkflowEvent) -> None:
-        """记录节点事件并更新任务状态，预留前端推送扩展点。"""
+        """更新任务状态快照并写入任务日志，预留前端推送扩展点。"""
 
-        logger.debug(
-            "工作流节点事件：task_id=%s node=%s event=%s",
-            event.task_id,
-            event.node_name,
-            event.event_type,
-        )
         status = self.get_task_status(event.task_id)
         status["last_node_event"] = event.to_dict()
         if event.event_type == "started":
@@ -720,6 +714,48 @@ class AnalysisService(WorkflowEventPublisher):
                 )
             )
         return halves
+
+    def recover_interrupted_tasks(self) -> list[str]:
+        """服务启动时将上次中断遗留的 running 任务标记为失败。
+
+        worker 被重启/热重载/异常终止时，任务快照会永远停留在 running；
+        启动阶段不存在任何在途任务，因此 running 状态必为残留。
+        """
+
+        recovered: list[str] = []
+        for status_path in self.file_store.root.glob("parsed_documents/*/task_status.json"):
+            try:
+                status = self.file_store.read_json(status_path)
+            except (OSError, ValueError):
+                logger.warning("任务状态文件损坏，跳过恢复：%s", status_path)
+                continue
+            if status.get("status") != "running":
+                continue
+            task_id = status.get("task_id")
+            if not task_id:
+                continue
+            self._update_status(
+                task_id,
+                status="failed",
+                progress=100,
+                current_stage="failed",
+                completed_at=now_iso(),
+                error={
+                    "code": "TASK_INTERRUPTED",
+                    "message": "服务重启导致任务中断，请重新发起分析",
+                },
+            )
+            self._append_process_event(
+                task_id,
+                event_type="task_interrupted",
+                message="服务重启，任务未完成已标记为失败",
+                stage="failed",
+                details={"error_code": "TASK_INTERRUPTED"},
+            )
+            recovered.append(str(task_id))
+        if recovered:
+            logger.warning("已将 %s 个中断任务标记为失败：%s", len(recovered), recovered)
+        return recovered
 
     def _update_status(self, task_id: str, **updates: Any) -> None:
         """原子更新一个任务状态快照。"""
