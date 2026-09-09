@@ -176,6 +176,8 @@ curl http://127.0.0.1:8001/health
 | 页面正常但 DOC/XLS 转换失败 | `docker compose exec docmind bash -lc 'soffice --version; ls -l /usr/lib/libreoffice/program/python'` |
 | 中文渲染成方块 | 镜像已装文泉驿；需要其它字体时挂载 `- /usr/share/fonts:/usr/share/fonts:ro` 并在容器内执行 `fc-cache -f` |
 | 构建卡在下载依赖 | 境外服务器加 `--build-arg UV_INDEX_URL=https://pypi.org/simple` |
+| 构建卡在 `apt-get update` | 加 `--build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn`（或 `mirrors.aliyun.com`） |
+| 拉取基础镜像超时（Docker Hub 不通） | 镜像已改用 `ghcr.io` 源；可在 Docker Desktop → Settings → Docker Engine 配 `registry-mirrors` 加速 |
 | 内存占用高 | 降低 `DOCMIND_LO_MAX_CONCURRENT`（每个 soffice 约 200~400MB）；PDF 不经过 LibreOffice |
 | 容器反复重启 | `docker compose logs docmind`，通常是 `DEEPSEEK_API_KEY` 未配置 |
 | 转换报超时 | 5 并发对低配机器偏重，调到 2~3；单份超时阈值为 180s |

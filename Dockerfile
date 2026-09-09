@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # -------------------------------
 # 2) 运行阶段
 # -------------------------------
-FROM python:3.12-slim-bookworm
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -40,6 +40,15 @@ ENV PYTHONUNBUFFERED=1 \
     # soffice 需要可写的 HOME 存放配置
     HOME=/root \
     TZ=Asia/Shanghai
+
+# Debian 官方源在国内服务器可能很慢：构建时传 --build-arg APT_MIRROR=主机名 替换
+# 例如 APT_MIRROR=mirrors.tuna.tsinghua.edu.cn / mirrors.aliyun.com
+ARG APT_MIRROR=""
+RUN if [ -n "$APT_MIRROR" ]; then \
+        for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do \
+            [ -f "$f" ] && sed -i "s|deb.debian.org|$APT_MIRROR|g; s|security.debian.org|$APT_MIRROR|g" "$f"; \
+        done; \
+    fi
 
 # LibreOffice：Writer 负责 DOC/DOCX，Calc 负责 XLS/XLSX，python3-uno 提供
 # XLS 行高修正脚本需要的 uno 模块；
