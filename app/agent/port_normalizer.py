@@ -39,6 +39,11 @@ class PortNormalizationAgent:
             temperature=settings.deepseek_temperature,
             timeout=settings.deepseek_timeout_seconds,
             max_retries=settings.deepseek_max_retries,
+            extra_body={
+                "thinking": {
+                    "type": "enabled" if settings.deepseek_thinking else "disabled"
+                }
+            },
         )
         self.text_chain = self.model | StrOutputParser()
         # 结构化输出方法在构造期不可验证（400 错误发生在调用时），

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DocMind 文档分析台</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909a">
 </head>
 <body>
   <main class="app-shell">
@@ -37,10 +37,10 @@
           <span class="dropzone-icon">＋</span>
           <span>
             <strong>添加托书文件</strong>
-            <small>PDF、DOC、XLS · 支持拖入</small>
+            <small>PDF、DOC/DOCX、XLS/XLSX · 支持拖入 · 一次最多 5 个</small>
           </span>
         </label>
-        <input id="fileInput" type="file" accept=".pdf,.doc,.xls" hidden>
+        <input id="fileInput" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" multiple hidden>
 
         <div id="fileList" class="file-list" aria-live="polite">
           <div class="empty-state">还没有上传文件</div>
@@ -96,7 +96,7 @@
 
     <div id="toast" class="toast" role="status"></div>
   </main>
-  <script src="/static/api.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/api.js?v=20260909a"></script>
+  <script src="/static/app.js?v=20260909a"></script>
 </body>
 </html>

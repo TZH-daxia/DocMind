@@ -78,6 +78,27 @@ class DeepSeekExtractionAgent:
             temperature=settings.deepseek_temperature,
             timeout=settings.deepseek_timeout_seconds,
             max_retries=settings.deepseek_max_retries,
+            extra_body={
+                "thinking": {
+                    "type": "enabled" if settings.deepseek_thinking else "disabled"
+                }
+            },
+        )
+        # 图片识别单独一个客户端：该环节是逐字转写，不需要推理，默认关闭 thinking
+        self.vision_model = ChatOpenAI(
+            api_key=SecretStr(settings.deepseek_api_key),
+            base_url=settings.deepseek_base_url,
+            model=settings.deepseek_model,
+            temperature=settings.deepseek_temperature,
+            timeout=settings.deepseek_timeout_seconds,
+            max_retries=settings.deepseek_max_retries,
+            extra_body={
+                "thinking": {
+                    "type": (
+                        "enabled" if settings.deepseek_vision_thinking else "disabled"
+                    )
+                }
+            },
         )
         self.output_parser = None
         # 扁平 12 键模板：明确要求模型逐个字段填写，缺一不可（弱模型也能按骨架填充）。
@@ -87,8 +108,7 @@ class DeepSeekExtractionAgent:
             "shipper, consignee, chinesepm, englishpm。"
             "每个键的值都是一个对象："
             '{"value": <提取值或 null>, "status": "normalized"|"missing"|"needs_review"|..., '
-            '"confidence": 0.0~1.0, "evidence": [{"quote": "..."}], '
-            '"extraction_method": "llm"}。'
+            '"confidence": 0.0~1.0, "evidence": [{"quote": "..."}]}。'
             "文档没有明确文字依据的字段：value 填 null、status 填 \"missing\"。"
             "不要包含 JSON 以外的任何文字或代码块标记。"
         )
@@ -132,8 +152,9 @@ class DeepSeekExtractionAgent:
                         "human",
                         (
                             "图片顺序：{image_names}\n"
-                            "第一张是托书整页图，用于理解版面关系；其后是同一页的局部放大图，"
-                            "用于逐字转写小字号文本。请先描述整页版面，再逐张转写放大图中的"
+                            "第一张是托书整页图，用于理解版面关系；其后是同一页按"
+                            "左上/右上/左下/右下切分的四块局部放大图，用于逐字转写"
+                            "小字号文本。请先描述整页版面，再逐张转写放大图中的"
                             "全部可见文字（公司名、地址、电话、邮箱、单号、数值等必须与图片像素"
                             "完全一致，禁止按语言习惯补全；无法辨认的字符标记“无法确认”）。"
                         ),
@@ -141,7 +162,7 @@ class DeepSeekExtractionAgent:
                     MessagesPlaceholder("image_messages"),
                 ]
             )
-            | self.model
+            | self.vision_model
         )
 
     async def describe_images(
@@ -211,15 +232,9 @@ class DeepSeekExtractionAgent:
     def _schema_to_candidates(result: PoOrderExtraction) -> list[FieldCandidate]:
         """把结构化抽取结果（12 字段）转换为下游通用的 list[FieldCandidate]。"""
 
-        allowed_methods = {"regex", "table", "ocr", "llm", "context", "manual"}
         candidates: list[FieldCandidate] = []
         for key in PO_ORDER_KEYS:
             field = getattr(result, key)
-            method = (
-                field.extraction_method
-                if field.extraction_method in allowed_methods
-                else "llm"
-            )
             evidence = [Evidence(quote=quote) for quote in (field.evidence or [])]
             candidates.append(
                 FieldCandidate(
@@ -228,7 +243,6 @@ class DeepSeekExtractionAgent:
                     status=field.status,
                     confidence=field.confidence,
                     evidence=evidence,
-                    extraction_method=method,
                 )
             )
         return candidates
@@ -318,7 +332,6 @@ class DeepSeekExtractionAgent:
                         status=raw.get("status", "needs_review"),
                         confidence=raw.get("confidence", 0.0),
                         evidence=evidence,
-                        extraction_method=raw.get("extraction_method", "llm"),
                     )
                 )
             except ValidationError:

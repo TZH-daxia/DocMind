@@ -1,10 +1,13 @@
 """本地文档渲染：把 .pdf/.doc/.xls 转为页面图片，替代 MinerU 解析。
 
 - .pdf 直接用 PyMuPDF 光栅化；
-- .doc 用 LibreOffice headless 导出 PDF（跨平台，不依赖 MS Office，可迁 Linux）；
-- .xls 优先经 LibreOffice UNO 展开隐藏行列、修正合并单元格行高后导出 PDF，
+- .doc/.docx 用 LibreOffice headless 导出 PDF（跨平台，不依赖 MS Office，可迁 Linux）；
+- .xls/.xlsx 优先经 LibreOffice UNO 展开隐藏行列、修正合并单元格行高后导出 PDF，
   失败时回退普通 LibreOffice CLI 转换；
-- .xls 在 LibreOffice 完全不可用时回退为纯 Python 合成表格图（xlrd + Pillow）。
+- .xls 在 LibreOffice 完全不可用时回退为纯 Python 合成表格图（xlrd + Pillow，
+  仅支持旧版 .xls，.xlsx 必须依赖 LibreOffice）。
+- 多 sheet 工作簿一律只取第一张表：其余表（尤其只有边框的空表）会变成多余
+  PDF 页，拖慢光栅化并挤占送 VLM 的图片名额。
 """
 
 import logging
@@ -61,14 +64,14 @@ class LocalDocumentRenderer:
         stem = self.file_store.source_stem(source_name)
         out_dir = self.file_store.task_dir("parsed_documents", task_id)
         suffix = source_path.suffix.lower()
-        if suffix not in {".pdf", ".doc", ".xls"}:
+        if suffix not in {".pdf", ".doc", ".docx", ".xls", ".xlsx"}:
             raise ValueError(f"LOCAL_RENDER_UNSUPPORTED: {suffix}")
 
         converter = "pymupdf"
         pdf_path = source_path
-        if suffix in {".doc", ".xls"}:
+        if suffix in {".doc", ".docx", ".xls", ".xlsx"}:
             try:
-                if suffix == ".xls":
+                if suffix in {".xls", ".xlsx"}:
                     try:
                         pdf_path, converter = self._xls_to_pdf_libreoffice(
                             source_path, out_dir, stem
@@ -377,7 +380,8 @@ class LocalDocumentRenderer:
 
         workbook = xlrd.open_workbook(str(xls_path), formatting_info=True)
         image_paths: list[Path] = []
-        for index, sheet in enumerate(workbook.sheets(), start=1):
+        # 业务只认第一张表，与 UNO 导出路径保持一致
+        for index, sheet in enumerate(workbook.sheets()[:1], start=1):
             if sheet.nrows == 0:
                 continue
             span = {

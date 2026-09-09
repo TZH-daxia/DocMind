@@ -94,7 +94,6 @@
       "status": "normalized",
       "confidence": 0.99,
       "evidence": [{"document_id": "doc_demo", "quote": "装运港：SHANGHAI"}],
-      "extraction_method": "table",
       "validation_errors": []
     },
     {
@@ -105,7 +104,6 @@
       "status": "normalized",
       "confidence": 0.98,
       "evidence": [{"document_id": "doc_demo", "quote": "1PLT"}],
-      "extraction_method": "table",
       "validation_errors": []
     }
   ]

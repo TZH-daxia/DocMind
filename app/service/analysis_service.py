@@ -37,6 +37,23 @@ from app.workflow.state import AnalysisState
 
 logger = logging.getLogger(__name__)
 
+# VLM 偶发拒答（声称"看不到图片"）的判定特征与重试策略：命中后重试，仍失败则让
+# 任务以明确错误码失败，避免把全空结果当成 needs_review 交回用户
+VLM_REFUSAL_MARKERS = (
+    "无法看到",
+    "看不到",
+    "无法访问",
+    "无法直接访问",
+    "无法查看",
+    "没有收到图片",
+    "缺乏对图像",
+    "cannot see",
+    "unable to see",
+    "no image",
+)
+VLM_MIN_CONTENT_CHARS = 200
+VLM_MAX_ATTEMPTS = 3
+
 class AnalysisService(WorkflowEventPublisher):
     """协调单份文档分析和本地结果持久化。"""
 
@@ -378,15 +395,37 @@ class AnalysisService(WorkflowEventPublisher):
             "image_paths": [str(path) for path in rendered.image_paths],
         }
 
+    @staticmethod
+    def _is_vlm_refusal(content: str) -> bool:
+        """判断 VLM 是否拒答（声称看不到图片），避免把拒答文本当成视觉内容。"""
+
+        text = content.strip()
+        if len(text) < VLM_MIN_CONTENT_CHARS:
+            return True
+        return any(marker in text for marker in VLM_REFUSAL_MARKERS)
+
     async def read_images_with_vlm(self, state: AnalysisState) -> str:
-        """读取解析图片并生成视觉理解内容。"""
+        """读取解析图片并生成视觉理解内容（对 VLM 偶发拒答做重试）。"""
 
         task_id = state["task_id"]
         images = self._load_images(state.get("image_paths", []))
-        vlm_content = await self.deepseek.describe_images(
-            load_po_order_vision_prompt(),
-            images,
-        )
+        for attempt in range(1, VLM_MAX_ATTEMPTS + 1):
+            vlm_content = await self.deepseek.describe_images(
+                load_po_order_vision_prompt(),
+                images,
+            )
+            if not self._is_vlm_refusal(vlm_content):
+                break
+            logger.warning(
+                "VLM 未返回有效视觉内容（第 %s/%s 次，长度 %s），准备重试",
+                attempt,
+                VLM_MAX_ATTEMPTS,
+                len(vlm_content),
+            )
+        else:
+            raise RuntimeError(
+                f"VLM_VISION_UNAVAILABLE: 连续 {VLM_MAX_ATTEMPTS} 次未能获取图片视觉内容"
+            )
         parsed_directory = Path(state["parsed"]["parsed_directory"])
         source_stem = self.file_store.source_stem(state["source_name"])
         vlm_path = parsed_directory / f"{source_stem}_vlm_image_content.md"
@@ -442,7 +481,6 @@ class AnalysisService(WorkflowEventPublisher):
                 status="confirmed",
                 confidence=1.0,
                 evidence=[Evidence(quote=f"fid={client_value}")],
-                extraction_method="context",
             )
 
         # 同一字段聚合，取置信度最高的候选；值原样保留，不修改模型输出
@@ -472,7 +510,6 @@ class AnalysisService(WorkflowEventPublisher):
                 status=status,
                 confidence=best.confidence,
                 evidence=best.evidence,
-                extraction_method=best.extraction_method,
             )
             result[field_key] = best.value
 
@@ -488,7 +525,6 @@ class AnalysisService(WorkflowEventPublisher):
                         status="missing",
                         confidence=0.0,
                         evidence=[],
-                        extraction_method="none",
                     ),
                 )
 
@@ -659,7 +695,7 @@ class AnalysisService(WorkflowEventPublisher):
                     )
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:
-        """加载页面图片：第一页给整页图 + 上下两半放大图，保证小字号文本可辨认。"""
+        """加载页面图片：第一页给整页图 + 四象限切分图，保证小字号文本可辨认。"""
 
         page_paths = [
             path
@@ -682,12 +718,16 @@ class AnalysisService(WorkflowEventPublisher):
                 )
             )
             if index == 0:
-                images.extend(self._split_half_images(content, path.name))
+                images.extend(self._split_page_images(content, path.name))
         return images[:budget]
 
     @staticmethod
-    def _split_half_images(content: bytes, name: str) -> list[ImageInput]:
-        """把整页图切成带垂直重叠的上下两半，提升小字辨认率且减少图片数量。"""
+    def _split_page_images(content: bytes, name: str) -> list[ImageInput]:
+        """把整页图按左上/右上/左下/右下切成带重叠的四块，提升小字辨认率。
+
+        每块约占整页 38% 面积，横纵各留 12% 重叠，避免落在分界线上的
+        文字被切成两半后两侧都看不全。
+        """
 
         import io
 
@@ -695,25 +735,29 @@ class AnalysisService(WorkflowEventPublisher):
 
         image = Image.open(io.BytesIO(content))
         width, height = image.size
+        overlap_x = int(width * 0.12)
         overlap_y = int(height * 0.12)
+        mid_x = width // 2
         mid_y = height // 2
         boxes = (
-            (0, 0, width, mid_y + overlap_y),
-            (0, mid_y - overlap_y, width, height),
+            (0, 0, mid_x + overlap_x, mid_y + overlap_y),  # 左上
+            (mid_x - overlap_x, 0, width, mid_y + overlap_y),  # 右上
+            (0, mid_y - overlap_y, mid_x + overlap_x, height),  # 左下
+            (mid_x - overlap_x, mid_y - overlap_y, width, height),  # 右下
         )
         stem = Path(name).stem
-        halves: list[ImageInput] = []
+        parts: list[ImageInput] = []
         for index, box in enumerate(boxes, start=1):
             buffer = io.BytesIO()
             image.crop(box).save(buffer, format="PNG")
-            halves.append(
+            parts.append(
                 ImageInput(
                     content=buffer.getvalue(),
                     media_type="image/png",
-                    name=f"{stem}_half_{index}.png",
+                    name=f"{stem}_part_{index}.png",
                 )
             )
-        return halves
+        return parts
 
     def recover_interrupted_tasks(self) -> list[str]:
         """服务启动时将上次中断遗留的 running 任务标记为失败。
@@ -808,6 +852,8 @@ class AnalysisService(WorkflowEventPublisher):
             "application/msword",
             "application/vnd.ms-excel",
             "application/octet-stream",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }:
             raise ValueError("FILE_CONTENT_INVALID")
 
@@ -823,4 +869,7 @@ class AnalysisService(WorkflowEventPublisher):
         if path.suffix.lower() in {".doc", ".xls"} and not content.startswith(
             b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
         ):
+            raise ValueError("FILE_CONTENT_INVALID")
+        # docx/xlsx 是 ZIP 容器，魔数固定为 PK\x03\x04
+        if path.suffix.lower() in {".docx", ".xlsx"} and not content.startswith(b"PK\x03\x04"):
             raise ValueError("FILE_CONTENT_INVALID")

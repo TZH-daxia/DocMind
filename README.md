@@ -164,15 +164,13 @@ data/
       "value": "SHANGHAI",
       "status": "normalized",
       "confidence": 0.99,
-      "evidence": [{ "quote": "始发站 Airport of Departure SHANGHAI" }],
-      "extraction_method": "llm"
+      "evidence": [{ "quote": "始发站 Airport of Departure SHANGHAI" }]
     },
     "hbrq": {
       "value": null,
       "status": "missing",
       "confidence": 0.0,
-      "evidence": [],
-      "extraction_method": "none"
+      "evidence": []
     }
   },
   "validation": { "is_valid": true }

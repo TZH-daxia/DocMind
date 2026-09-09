@@ -1,8 +1,11 @@
-"""LibreOffice UNO 脚本：展开隐藏行列、修正合并单元格行高后把 XLS 导出为 PDF。
+"""LibreOffice UNO 脚本：只把 XLS 第一张表导出为 PDF（展开隐藏行列、修正合并行高）。
 
 由 LibreOffice 自带的 Python 解释器执行（系统 venv 里没有 uno 模块）：
 
     <LibreOffice>/program/python.exe lo_xls_height_fix.py <port> <xls_path> <pdf_path>
+
+业务上只认第一张表，其余 sheet 一律不导出：它们（尤其是只有边框没有内容的
+空表）会变成多余 PDF 页，既拖慢光栅化，又挤占送 VLM 的图片名额。
 
 两步处理，目标都是"内容完整显示"：
 1. 取消使用范围内所有隐藏行/列——隐藏行会让跨行合并单元格的内容被裁掉；
@@ -145,6 +148,32 @@ def _fix_sheet(sheet: Any) -> int:
     return fixed
 
 
+def _keep_primary_sheet(document: Any) -> Any:
+    """只保留第一张表参与 PDF 导出，返回该表对象。
+
+    优先关闭其余表的可打印标记（不影响首表中跨表引用的公式取值）；该属性
+    不可用时退化为移除其余表——storeToURL 是另存为且 close(False) 不回写
+    源文件，移除不会影响上传的原始 xls。
+    """
+
+    sheets = document.Sheets
+    names = list(sheets.getElementNames())
+    if not names:
+        raise RuntimeError("NO_SHEET")
+    primary = sheets.getByName(names[0])
+    try:
+        if not primary.IsVisible:
+            primary.IsVisible = True  # 首表隐藏会导出空白 PDF
+        for name in names[1:]:
+            sheets.getByName(name).IsPrintable = False
+        print("kept sheet by: IsPrintable")
+    except Exception:  # noqa: BLE001 - UNO 属性不可用时退化为移除其余表
+        for name in names[1:]:
+            sheets.removeByName(name)
+        print("kept sheet by: removeByName")
+    return primary
+
+
 def main() -> int:
     port, xls_path, pdf_path = sys.argv[1:4]
     context = _connect(port)
@@ -166,12 +195,12 @@ def main() -> int:
         print("LOAD_FAILED", file=sys.stderr)
         return 2
     try:
-        fixed = 0
-        for sheet in document.Sheets:
-            unhidden = _unhide_used_rows_and_columns(sheet)
-            if unhidden:
-                print(f"unhidden rows/cols in {sheet.Name}: {unhidden}")
-            fixed += _fix_sheet(sheet)
+        primary = _keep_primary_sheet(document)
+        unhidden = _unhide_used_rows_and_columns(primary)
+        if unhidden:
+            print(f"unhidden rows/cols in {primary.Name}: {unhidden}")
+        fixed = _fix_sheet(primary)
+        print(f"kept sheet: {primary.Name}")
         print(f"fixed merged areas: {fixed}")
         document.storeToURL(
             uno.systemPathToFileUrl(os.path.abspath(pdf_path)),

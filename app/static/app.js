@@ -10,6 +10,7 @@ const nodes = [
   ["extract_candidates", "字段候选提取"],
   ["build_result", "置信度判断与输出"],
 ];
+const MAX_UPLOAD_FILES = 5;
 const elements = {
   fileInput: document.querySelector("#fileInput"),
   fileList: document.querySelector("#fileList"),
@@ -63,6 +64,10 @@ async function onFileSelected(event) {
 }
 async function uploadFiles(files) {
   if (!files.length) return;
+  if (files.length > MAX_UPLOAD_FILES) {
+    showToast(`一次最多选择 ${MAX_UPLOAD_FILES} 个文件，本次已取消，请重新选择`, "error");
+    return;
+  }
   let lastTaskId = null;
   for (const file of files) {
     try {

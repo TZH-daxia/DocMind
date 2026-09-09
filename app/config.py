@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     deepseek_temperature: float = 0.0
     deepseek_timeout_seconds: float = 240.0
     deepseek_max_retries: int = 1
+    # 字段抽取是否开启 thinking：开启后候选更稳，但单次耗时 8s → 95s 且随推理
+    # token 数大幅波动
+    deepseek_thinking: bool = True
+    # 图片识别（read_images_with_vlm）是否开启 thinking：关闭后逐字转写会漏字、
+    # 串语言（如英文被改写成德文），因此与抽取保持一致默认开启
+    deepseek_vision_thinking: bool = False
 
     docmind_data_root: Path = Field(default=Path("data"), validation_alias="DOCMIND_DATA_ROOT")
     # 港口主数据接口（poOrder PublicWebApi）根地址，如 http://<host>/PublicWebApi/；
@@ -56,7 +62,7 @@ class Settings(BaseSettings):
     # 港口主数据本地缓存有效期（小时），过期后重新拉取
     port_cache_ttl_hours: float = 24.0
     max_file_size_bytes: int = 200 * 1024 * 1024
-    allowed_extensions: tuple[str, ...] = (".doc", ".xls", ".pdf")
+    allowed_extensions: tuple[str, ...] = (".doc", ".docx", ".xls", ".xlsx", ".pdf")
     # LibreOffice soffice 可执行路径：doc/xls 转 PDF 的统一方案（跨平台，不依赖 Office）；
     # 留空时按 PATH 与常见安装位置自动探测
     libreoffice_path: str = Field(default="", validation_alias="DOCMIND_SOFFICE_PATH")

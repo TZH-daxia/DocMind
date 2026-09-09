@@ -31,7 +31,6 @@ def make_meta(value: str | None, status: str, confidence: float = 0.9) -> FieldM
         status=status,  # type: ignore[arg-type]
         confidence=confidence,
         evidence=[Evidence(quote="原文片段")],
-        extraction_method="llm",
     )
 
 
@@ -144,7 +143,6 @@ async def test_final_destination_candidate_proceeds_without_review(tmp_path: Pat
                     "status": "confirmed",
                     "confidence": 0.9,
                     "evidence": [{"quote": "Final Destination: GERMANY"}],
-                    "extraction_method": "table",
                 }
             ],
         }
@@ -176,7 +174,7 @@ async def test_result_and_review_fields_follow_output_order(tmp_path: Path) -> N
                     "status": "confirmed",
                     "confidence": 0.9,
                     "evidence": [{"quote": "PRODUCT"}],
-                    "extraction_method": "llm",
+
                 },
                 {
                     "field_key": "mdg",
@@ -184,7 +182,7 @@ async def test_result_and_review_fields_follow_output_order(tmp_path: Path) -> N
                     "status": "needs_review",
                     "confidence": 0.9,
                     "evidence": [{"quote": "Final Destination: GERMANY"}],
-                    "extraction_method": "llm",
+
                 },
                 {
                     "field_key": "sfg",
@@ -192,7 +190,7 @@ async def test_result_and_review_fields_follow_output_order(tmp_path: Path) -> N
                     "status": "needs_review",
                     "confidence": 0.9,
                     "evidence": [{"quote": "SHANGHAI"}],
-                    "extraction_method": "llm",
+
                 },
             ],
         }

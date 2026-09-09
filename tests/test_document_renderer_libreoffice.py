@@ -140,3 +140,74 @@ def test_render_xls_falls_back_to_plain_convert(
     rendered = renderer.render(source, "a.xls", "task_x")
     assert rendered.converter == "libreoffice"
     assert rendered.page_count == 0
+
+
+def _fake_plain_convert(
+    self: LocalDocumentRenderer, out_dir: Path, stem: str
+) -> tuple[Path, str]:
+    return out_dir / f"{stem}_converted.pdf", "libreoffice"
+
+
+def _fake_empty_pages(
+    self: LocalDocumentRenderer, pdf_path: Path, out_dir: Path, stem: str
+) -> tuple[list[Path], int]:
+    return [], 0
+
+
+def test_render_docx_uses_libreoffice_convert(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DOCX 与 DOC 走同一条 LibreOffice CLI 转换路径。"""
+
+    renderer = build_renderer(tmp_path)
+    source = tmp_path / "a.docx"
+    source.write_bytes(b"PK\x03\x04 fake docx")
+
+    monkeypatch.setattr(
+        LocalDocumentRenderer,
+        "_office_to_pdf_libreoffice",
+        lambda self, source_path, out_dir, stem: _fake_plain_convert(self, out_dir, stem),
+    )
+    monkeypatch.setattr(LocalDocumentRenderer, "_render_pages", _fake_empty_pages)
+    rendered = renderer.render(source, "a.docx", "task_docx")
+    assert rendered.converter == "libreoffice"
+
+
+def test_render_xlsx_falls_back_to_plain_convert(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XLSX 与 XLS 走同一条 UNO → CLI 回退路径。"""
+
+    renderer = build_renderer(tmp_path)
+    source = tmp_path / "a.xlsx"
+    source.write_bytes(b"PK\x03\x04 fake xlsx")
+
+    def raise_uno(*args: Any, **kwargs: Any) -> tuple[Path, str]:
+        raise RuntimeError("LIBREOFFICE_UNO_UNAVAILABLE")
+
+    monkeypatch.setattr(LocalDocumentRenderer, "_xls_to_pdf_libreoffice", raise_uno)
+    monkeypatch.setattr(
+        LocalDocumentRenderer,
+        "_office_to_pdf_libreoffice",
+        lambda self, source_path, out_dir, stem: _fake_plain_convert(self, out_dir, stem),
+    )
+    monkeypatch.setattr(LocalDocumentRenderer, "_render_pages", _fake_empty_pages)
+    rendered = renderer.render(source, "a.xlsx", "task_xlsx")
+    assert rendered.converter == "libreoffice"
+
+
+def test_render_xlsx_without_libreoffice_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """XLSX 没有 synthetic 兜底（xlrd 只认 .xls），LibreOffice 缺失必须明确报错。"""
+
+    renderer = build_renderer(tmp_path)
+    source = tmp_path / "a.xlsx"
+    source.write_bytes(b"PK\x03\x04 fake xlsx")
+
+    def raise_convert(*args: Any, **kwargs: Any) -> tuple[Path, str]:
+        raise RuntimeError("LIBREOFFICE_NOT_FOUND")
+
+    monkeypatch.setattr(LocalDocumentRenderer, "_office_to_pdf_libreoffice", raise_convert)
+    with pytest.raises(RuntimeError, match="LOCAL_RENDER_LIBREOFFICE_REQUIRED"):
+        renderer.render(source, "a.xlsx", "task_xlsx")

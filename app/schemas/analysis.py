@@ -47,7 +47,6 @@ class FieldCandidate(BaseModel):
     status: FieldStatus = "needs_review"
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     evidence: list[Evidence] = Field(default_factory=list)
-    extraction_method: Literal["regex", "table", "ocr", "llm", "context", "manual"] = "llm"
 
 
 class ExtractionEnvelope(BaseModel):
@@ -67,7 +66,6 @@ class ExtractedField(BaseModel):
     status: FieldStatus = "needs_review"
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
-    extraction_method: str = "llm"
 
 
 class PoOrderExtraction(BaseModel):
@@ -98,7 +96,6 @@ class FieldMetadata(BaseModel):
     status: FieldStatus
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     evidence: list[Evidence] = Field(default_factory=list)
-    extraction_method: str
 
 
 class ValidationResult(BaseModel):
