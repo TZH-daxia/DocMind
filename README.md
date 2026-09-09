@@ -110,6 +110,76 @@ uv run uvicorn app.main:app --port 8001 --reload
 `pymupdf` / `libreoffice_uno`（含行列展开与行高修正）/ `libreoffice`（CLI 直接转换）/
 `synthetic`（纯 Python 合成图兜底）。
 
+## Docker 部署（Linux 服务器）
+
+镜像已内置 Python 3.12 运行时、LibreOffice（Writer + Calc，`DOCMIND_SOFFICE_PATH`
+留空自动探测到 `/usr/bin/soffice`）、中文字体（文泉驿），**服务器无需额外安装任何依赖**。
+
+### 前置条件
+
+- Docker 24+ 与 Docker Compose v2（`docker compose version` 可查）
+- 建议 2 核 4GB 以上：5 份文件并发时峰值约 2~3GB，主要来自 LibreOffice
+- DeepSeek API Key
+
+### 部署步骤
+
+```bash
+# 1. 获取代码
+git clone <你的仓库地址> && cd DocMind
+
+# 2. 配置密钥（.env 已被 .gitignore 排除，不会被提交）
+cp .env.example .env
+# 编辑 .env，至少填入 DEEPSEEK_API_KEY
+
+# 3. 构建并后台启动（首次需下载依赖 + LibreOffice，约 5~10 分钟）
+docker compose up -d --build
+
+# 4. 查看启动日志
+docker compose logs -f docmind
+
+# 5. 健康检查
+curl http://127.0.0.1:8001/health
+```
+
+启动后浏览器打开 `http://<服务器IP>:8001/` 即可使用（接口文档 `/docs`）。
+
+改宿主端口：`HOST_PORT=9001 docker compose up -d`（容器内固定 8001）。
+
+### 数据与日志
+
+| 内容 | 位置 |
+|---|---|
+| 上传原件、任务产物、分析结果 | 卷 `docmind-data` → 容器 `/app/data` |
+| 系统日志 | 卷 `docmind-logs` → 容器 `/app/logs`（也可 `docker compose logs -f`） |
+
+升级：`git pull && docker compose up -d --build`（数据卷不受影响）。
+
+### 部署相关参数
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `HOST_PORT` | `8001` | 宿主机映射端口（compose 读取，非应用变量） |
+| `DOCMIND_HOST` | `0.0.0.0` | compose 已强制设置：容器内监听 `127.0.0.1` 时宿主机访问不到 |
+| `DEEPSEEK_API_KEY` | 必填 | 缺失时服务启动即失败，表现为容器反复重启 |
+| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 内存吃紧或转换超时时调小到 2~3 |
+| `DOCMIND_MAX_CONCURRENT_TASKS` | `12` | 同时存活任务数上限（兜底） |
+| `DOCMIND_MODEL_MAX_CONCURRENT` | `5` | 上游 429 或大面积超时时调小到 3 |
+| `UV_INDEX_URL` | 空 | 构建参数：境外服务器改用 `--build-arg UV_INDEX_URL=https://pypi.org/simple` |
+
+> 任务在单个进程内调度，状态与产物落在文件与卷上，**不要开多副本或多 uvicorn worker**：
+> 多实例会把彼此正在运行的任务在启动时误判为中断并标记失败。
+
+### 常见问题
+
+| 现象 | 排查 |
+|---|---|
+| 页面正常但 DOC/XLS 转换失败 | `docker compose exec docmind bash -lc 'soffice --version; ls -l /usr/lib/libreoffice/program/python'` |
+| 中文渲染成方块 | 镜像已装文泉驿；需要其它字体时挂载 `- /usr/share/fonts:/usr/share/fonts:ro` 并在容器内执行 `fc-cache -f` |
+| 构建卡在下载依赖 | 境外服务器加 `--build-arg UV_INDEX_URL=https://pypi.org/simple` |
+| 内存占用高 | 降低 `DOCMIND_LO_MAX_CONCURRENT`（每个 soffice 约 200~400MB）；PDF 不经过 LibreOffice |
+| 容器反复重启 | `docker compose logs docmind`，通常是 `DEEPSEEK_API_KEY` 未配置 |
+| 转换报超时 | 5 并发对低配机器偏重，调到 2~3；单份超时阈值为 180s |
+
 ## 数据目录契约
 
 `data/` 下只保留三个目录（均已 gitignore）：
