@@ -7,7 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from app.agent.deepseek_extractor import DeepSeekExtractionAgent, ImageInput
+from app.agent.deepseek_extractor import (
+    DeepSeekExtractionAgent,
+    EmptyExtractionError,
+    ImageInput,
+)
 from app.collector.document_renderer import LocalDocumentRenderer
 from app.config import Settings
 from app.prompts.loader import (
@@ -53,6 +57,8 @@ VLM_REFUSAL_MARKERS = (
 )
 VLM_MIN_CONTENT_CHARS = 200
 VLM_MAX_ATTEMPTS = 3
+# VLM 拒答重试前的退避基数（第 n 次重试等待 n × 基数秒）
+VLM_RETRY_BACKOFF_SECONDS = 2.0
 
 class AnalysisService(WorkflowEventPublisher):
     """协调单份文档分析和本地结果持久化。"""
@@ -65,6 +71,17 @@ class AnalysisService(WorkflowEventPublisher):
         # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
         self.port_service = PortNormalizationService(settings, self.file_store)
+        # 并发闸门按名字惰性创建：信号量必须在事件循环内构造，而服务是进程级
+        # 单例（启动阶段与首次请求都会取用），因此延迟到真正执行任务时创建
+        self._gates: dict[str, asyncio.Semaphore] = {}
+
+    def _gate(self, name: str, limit: int) -> asyncio.Semaphore:
+        """返回指定用途的并发闸门（同名闸门复用同一实例）。"""
+
+        gate = self._gates.get(name)
+        if gate is None:
+            gate = self._gates[name] = asyncio.Semaphore(max(1, limit))
+        return gate
 
     async def create_task(
         self,
@@ -250,7 +267,19 @@ class AnalysisService(WorkflowEventPublisher):
         return len(self.file_store.read_text(path, errors="replace").splitlines())
 
     async def process_task(self, task_id: str) -> None:
-        """运行一份已保存文档的 LangGraph 工作流。"""
+        """运行一份已保存文档的 LangGraph 工作流。
+
+        同时存活的任务数达到上限时在此排队等待；等待期间任务快照仍是 queued，
+        拿到闸门后才置为 running 并开始推进进度。这里只是兜底限流：重资源阶段
+        （LibreOffice 渲染、模型调用）各自有独立闸门，任务走完某阶段就释放该
+        阶段闸门，后续任务可以流水线式补位，不必等前面的任务整体跑完。
+        """
+
+        async with self._gate("task", self.settings.max_concurrent_tasks):
+            await self._run_task(task_id)
+
+    async def _run_task(self, task_id: str) -> None:
+        """执行单个任务的工作流（调用方需已持有任务并发闸门）。"""
 
         status = self.get_task_status(task_id)
         started_at = now_iso()
@@ -287,23 +316,32 @@ class AnalysisService(WorkflowEventPublisher):
         )
         try:
             await workflow.ainvoke(state)
+        except EmptyExtractionError as exc:
+            # 模型没抽出任何字段：单独错误码，便于与渲染/网络类失败区分
+            logger.error("Analysis task empty extraction: %s（%s）", task_id, exc)
+            self._fail_task(task_id, exc, "EMPTY_EXTRACTION")
         except Exception as exc:
             logger.exception("Analysis task failed: %s", task_id)
-            self._update_status(
-                task_id,
-                status="failed",
-                progress=100,
-                current_stage="failed",
-                completed_at=now_iso(),
-                error={"code": "ANALYSIS_FAILED", "message": str(exc)},
-            )
-            self._append_process_event(
-                task_id,
-                event_type="task_failed",
-                message="分析任务执行失败",
-                stage="failed",
-                details={"error_code": "ANALYSIS_FAILED"},
-            )
+            self._fail_task(task_id, exc, "ANALYSIS_FAILED")
+
+    def _fail_task(self, task_id: str, exc: BaseException, error_code: str) -> None:
+        """把任务标记为失败并写入统一结构的错误信息。"""
+
+        self._update_status(
+            task_id,
+            status="failed",
+            progress=100,
+            current_stage="failed",
+            completed_at=now_iso(),
+            error={"code": error_code, "message": str(exc)},
+        )
+        self._append_process_event(
+            task_id,
+            event_type="task_failed",
+            message="分析任务执行失败",
+            stage="failed",
+            details={"error_code": error_code},
+        )
 
     def publish(self, event: WorkflowEvent) -> None:
         """更新任务状态快照并写入任务日志，预留前端推送扩展点。"""
@@ -377,12 +415,17 @@ class AnalysisService(WorkflowEventPublisher):
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
 
         task_id = state["task_id"]
-        rendered = await asyncio.to_thread(
-            self.renderer.render,
-            Path(state["uploaded_path"]),
-            state["source_name"],
-            task_id,
-        )
+        # LibreOffice 转换单独限流：每次转换都会拉起一个独立 soffice 进程，
+        # 并发过高会拖垮机器并触发转换超时，因此与任务并发上限分开控制
+        async with self._gate(
+            "libreoffice", self.settings.libreoffice_max_concurrent
+        ):
+            rendered = await asyncio.to_thread(
+                self.renderer.render,
+                Path(state["uploaded_path"]),
+                state["source_name"],
+                task_id,
+            )
         self._update_status(
             task_id,
             rendered_converter=rendered.converter,
@@ -408,12 +451,17 @@ class AnalysisService(WorkflowEventPublisher):
         """读取解析图片并生成视觉理解内容（对 VLM 偶发拒答做重试）。"""
 
         task_id = state["task_id"]
-        images = self._load_images(state.get("image_paths", []))
+        # 读图 + 四象限裁剪是同步 CPU/IO 操作，放进线程避免阻塞事件循环
+        images = await asyncio.to_thread(
+            self._load_images, state.get("image_paths", [])
+        )
         for attempt in range(1, VLM_MAX_ATTEMPTS + 1):
-            vlm_content = await self.deepseek.describe_images(
-                load_po_order_vision_prompt(),
-                images,
-            )
+            # 闸门只包住单次调用：退避等待时释放槽位，别让重试占着并发额度
+            async with self._gate("model", self.settings.model_max_concurrent):
+                vlm_content = await self.deepseek.describe_images(
+                    load_po_order_vision_prompt(),
+                    images,
+                )
             if not self._is_vlm_refusal(vlm_content):
                 break
             logger.warning(
@@ -422,6 +470,9 @@ class AnalysisService(WorkflowEventPublisher):
                 VLM_MAX_ATTEMPTS,
                 len(vlm_content),
             )
+            if attempt < VLM_MAX_ATTEMPTS:
+                # 退避：并发拉高后上游更容易限流，重试前让出一点时间
+                await asyncio.sleep(VLM_RETRY_BACKOFF_SECONDS * attempt)
         else:
             raise RuntimeError(
                 f"VLM_VISION_UNAVAILABLE: 连续 {VLM_MAX_ATTEMPTS} 次未能获取图片视觉内容"
@@ -437,14 +488,33 @@ class AnalysisService(WorkflowEventPublisher):
         return vlm_content
 
     async def extract_candidates(self, state: AnalysisState) -> list[dict[str, Any]]:
-        """仅以 VLM 视觉理解文档为来源抽取字段候选。"""
+        """仅以 VLM 视觉理解文档为来源抽取字段候选。
+
+        抽取为空时：VLM 内容本身就极短（空白件/未识别出文字）保留空结果交人工
+        审核；VLM 内容正常却抽不出字段，判定为抽取失败（EMPTY_EXTRACTION），
+        不再伪装成"执行成功但结果全空"。
+        """
 
         task_id = state["task_id"]
-        model_candidates = await self.deepseek.extract(
-            system_prompt=load_po_order_extraction_prompt(),
-            vlm_image_content=state.get("vlm_image_content", ""),
-            context=state["context"],
-        )
+        vlm_image_content = state.get("vlm_image_content", "")
+        async with self._gate("model", self.settings.model_max_concurrent):
+            try:
+                model_candidates = await self.deepseek.extract(
+                    system_prompt=load_po_order_extraction_prompt(),
+                    vlm_image_content=vlm_image_content,
+                    context=state["context"],
+                )
+            except EmptyExtractionError:
+                if len(vlm_image_content.strip()) < VLM_MIN_CONTENT_CHARS:
+                    logger.warning(
+                        "VLM 视觉内容为空，抽取结果按空处理：task_id=%s", task_id
+                    )
+                    model_candidates = [
+                        FieldCandidate(field_key=key, value=None, status="missing")
+                        for key in PO_ORDER_KEYS
+                    ]
+                else:
+                    raise
         allowed_keys = set(PO_ORDER_KEYS)
         all_candidates = [
             candidate for candidate in model_candidates if candidate.field_key in allowed_keys
@@ -758,6 +828,18 @@ class AnalysisService(WorkflowEventPublisher):
                 )
             )
         return parts
+
+    def run_data_retention_cleanup(self) -> list[str]:
+        """清理超过保留期的任务产物，返回被删除条目的相对路径。
+
+        服务启动时与每小时各执行一次；running 任务由 FileStore 跳过，
+        不会误删在途任务。
+        """
+
+        removed = self.file_store.cleanup_expired(self.settings.data_retention_hours)
+        if removed:
+            logger.info("数据保留期清理完成：%s", removed)
+        return removed
 
     def recover_interrupted_tasks(self) -> list[str]:
         """服务启动时将上次中断遗留的 running 任务标记为失败。

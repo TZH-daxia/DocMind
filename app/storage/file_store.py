@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 import re
+import shutil
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +11,8 @@ from typing import Any
 
 from app.config import Settings
 from app.schemas.file import UploadedDocument
+
+logger = logging.getLogger(__name__)
 
 
 class FileStore:
@@ -163,3 +168,53 @@ class FileStore:
         """返回处理日志文件路径。"""
 
         return self.task_dir("parsed_documents", task_id) / "process.log"
+
+    def cleanup_expired(self, retention_hours: float) -> list[str]:
+        """删除超过保留期的运行产物，返回被清理条目的相对路径。
+
+        清理范围：parsed_documents/task_*（整目录，running 状态跳过，防止误删
+        在途任务）、uploaded_documents 与 analysis_results 下的文件；
+        reference_cache 是带自身 TTL 的主数据缓存，不参与清理。
+        retention_hours <= 0 表示永久保留（禁用清理）。
+        """
+
+        if retention_hours <= 0:
+            return []
+        cutoff = time.time() - retention_hours * 3600
+        removed: list[str] = []
+        for task_dir in sorted((self.root / "parsed_documents").glob("task_*")):
+            if not task_dir.is_dir():
+                continue
+            try:
+                status = self.read_json(task_dir / "task_status.json")
+            except (OSError, ValueError):
+                status = None
+            if isinstance(status, dict) and status.get("status") == "running":
+                logger.info("任务仍在运行，跳过清理：%s", task_dir.name)
+                continue
+            removed.extend(self._remove_if_expired(task_dir, cutoff))
+        for category in ("uploaded_documents", "analysis_results"):
+            directory = self.root / category
+            for path in sorted(directory.iterdir()):
+                removed.extend(self._remove_if_expired(path, cutoff))
+        if removed:
+            logger.info("已清理 %s 个超过保留期的运行产物", len(removed))
+        return removed
+
+    def _remove_if_expired(self, path: Path, cutoff: float) -> list[str]:
+        """单个文件/目录超过保留期则删除，返回被删除的相对路径。"""
+
+        try:
+            if path.stat().st_mtime > cutoff:
+                return []
+        except OSError:
+            return []
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except OSError as exc:
+            logger.warning("清理过期产物失败（可能被占用）：%s（%s）", path, exc)
+            return []
+        return [self.relative_path(path)]

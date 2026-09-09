@@ -1,7 +1,8 @@
+import asyncio
 import logging
 import sys
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -11,12 +12,27 @@ from app.api.dependencies import get_analysis_service
 from app.api.routes.analysis import router as analysis_router
 from app.config import Settings, get_settings
 from app.logging_config import configure_logging
+from app.service.analysis_service import AnalysisService
 from app.storage.file_store import FileStore
 
 settings = get_settings()
 configure_logging(settings)
 FileStore(settings)
 logger = logging.getLogger(__name__)
+
+# 周期清理间隔（小时）：启动时先清一次，之后按此间隔重复
+DATA_CLEANUP_INTERVAL_HOURS = 1.0
+
+
+async def _periodic_data_cleanup(service: AnalysisService, interval_hours: float) -> None:
+    """周期清理超过保留期的任务产物；单次失败只记日志，不影响服务。"""
+
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            service.run_data_retention_cleanup()
+        except Exception:
+            logger.exception("周期清理任务产物失败")
 
 
 def format_startup_banner(current: Settings) -> str:
@@ -51,10 +67,21 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     logger.info("%s application started", settings.app_name)
     _echo(format_startup_banner(settings))
-    get_analysis_service().recover_interrupted_tasks()
+    service = get_analysis_service()
+    service.recover_interrupted_tasks()
+    try:
+        service.run_data_retention_cleanup()
+    except Exception:
+        logger.exception("启动清理任务产物失败")
+    cleanup_task = asyncio.create_task(
+        _periodic_data_cleanup(service, DATA_CLEANUP_INTERVAL_HOURS)
+    )
     try:
         yield
     finally:
+        cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup_task
         logger.info("%s application stopped", settings.app_name)
         _echo(f"{settings.app_name} 已停止")
 

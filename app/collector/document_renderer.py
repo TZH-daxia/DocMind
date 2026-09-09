@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 MAX_PAGES = 10
 DPI = 200
 LIBREOFFICE_TIMEOUT_SECONDS = 180
+# XLS UNO 导出允许的重试次数：端口被抢占或 soffice 启动偶发失败时换端口重来，
+# 上限压到 2 次，避免真正的内容类失败被反复重试拖长整体耗时
+UNO_PORT_ATTEMPTS = 2
 FONT_CANDIDATES = (
     r"C:\Windows\Fonts\msyh.ttc",
     r"C:\Windows\Fonts\simsun.ttc",
@@ -97,9 +100,11 @@ class LocalDocumentRenderer:
                     libreoffice_error,
                 )
                 converter = "synthetic"
-        image_paths, page_count = self._render_pages(pdf_path, out_dir, stem)
         if converter == "synthetic":
+            # 合成图直接由 .xls 源文件生成，不能再把它当 PDF 光栅化
             image_paths, page_count = self._xls_synthetic_images(source_path, out_dir, stem)
+        else:
+            image_paths, page_count = self._render_pages(pdf_path, out_dir, stem)
         metadata_path = out_dir / f"{stem}_render_meta.json"
         self.file_store.write_json_atomic(
             metadata_path,
@@ -169,7 +174,52 @@ class LocalDocumentRenderer:
         script_path = Path(__file__).with_name("lo_xls_height_fix.py")
         pdf_path = out_dir / f"{stem}_converted.pdf"
         self._remove_stale_lock(source_path)
-        port = self._free_port()
+        last_error = "未知错误"
+        for attempt in range(1, UNO_PORT_ATTEMPTS + 1):
+            port = self._free_port()
+            # _free_port 释放端口到 soffice 真正绑定之间存在窗口，期间可能被并发
+            # 任务或本机其他进程占用；占用时换端口重来，避免连上别人的 UNO 服务
+            # 后静默失败
+            if self._port_in_use(port):
+                logger.warning(
+                    "UNO 端口 %s 已被占用，换端口重试（第 %s 次）", port, attempt
+                )
+                continue
+            try:
+                self._uno_export_once(
+                    soffice=soffice,
+                    lo_python=lo_python,
+                    script_path=script_path,
+                    source_path=source_path,
+                    pdf_path=pdf_path,
+                    port=port,
+                )
+            except RuntimeError as exc:
+                last_error = str(exc)
+                logger.warning(
+                    "XLS UNO 导出失败（第 %s/%s 次）：%s",
+                    attempt,
+                    UNO_PORT_ATTEMPTS,
+                    exc,
+                )
+                continue
+            return pdf_path, "libreoffice_uno"
+        raise RuntimeError(
+            f"LIBREOFFICE_UNO_FAILED: 连续 {UNO_PORT_ATTEMPTS} 次导出失败：{last_error}"
+        )
+
+    def _uno_export_once(
+        self,
+        *,
+        soffice: Path,
+        lo_python: Path,
+        script_path: Path,
+        source_path: Path,
+        pdf_path: Path,
+        port: int,
+    ) -> None:
+        """拉起一次 soffice 并经 UNO 导出 PDF，失败抛出 RuntimeError。"""
+
         profile_dir = Path(tempfile.mkdtemp(prefix="docmind_lo_"))
         process = subprocess.Popen(
             [
@@ -204,7 +254,6 @@ class LocalDocumentRenderer:
         finally:
             self._stop_soffice(process)
             shutil.rmtree(profile_dir, ignore_errors=True)
-        return pdf_path, "libreoffice_uno"
 
     @staticmethod
     def _remove_stale_lock(source_path: Path) -> None:
@@ -226,6 +275,14 @@ class LocalDocumentRenderer:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind(("127.0.0.1", 0))
             return int(sock.getsockname()[1])
+
+    @staticmethod
+    def _port_in_use(port: int) -> bool:
+        """检测本机端口是否已有服务在监听。"""
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            return sock.connect_ex(("127.0.0.1", port)) == 0
 
     @staticmethod
     def _wait_for_port(port: int, timeout_seconds: float) -> None:

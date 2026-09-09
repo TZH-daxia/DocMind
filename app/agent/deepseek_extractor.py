@@ -22,6 +22,19 @@ from app.schemas.po_order import PO_ORDER_KEYS
 
 logger = logging.getLogger(__name__)
 
+# 模型偶发给输出套一层包装（{"result": {...}} 等），解析前先尝试剥掉
+PAYLOAD_WRAPPER_KEYS = ("result", "data", "fields", "output", "extraction")
+
+
+class EmptyExtractionError(RuntimeError):
+    """模型未产出任何有效字段候选。
+
+    典型场景：模型返回空对象、或把结果包了一层（`{"result": {...}}`），此时
+    `_parse_flat` 会把它们静默解析成 12 个 missing 候选，历史上表现为"任务成功
+    但结果全空"。抛出本异常后由调用方决定重试或显式标记失败，不再给用户一份
+    看似正常的空结果。
+    """
+
 HUMAN_PROMPT_TEMPLATE = """请仅依据下面的视觉理解文档抽取订单字段候选。
 订单上下文：
 {order_context}
@@ -205,11 +218,17 @@ class DeepSeekExtractionAgent:
                 result = await self.structured_chain.ainvoke(variables)
                 candidates = self._schema_to_candidates(result)
                 logger.debug("结构化抽取得到候选数：%s", len(candidates))
-                return self._ensure_all_fields(candidates)
+                if self._has_any_value(candidates):
+                    return self._ensure_all_fields(candidates)
+                logger.warning("结构化抽取未得到任何字段值，回退 free-form")
             except Exception as exc:  # noqa: BLE001 - 结构化失败则回退
-                logger.debug("结构化抽取失败，回退 free-form：%s", exc)
+                # 结构化长期不可用时（如 thinking 与 response_format 不兼容）这里
+                # 每次都会命中，提升到 warning 才能在默认 INFO 下看见真实链路。
+                logger.warning("结构化抽取失败，回退 free-form：%s", exc)
         # 2) 回退 free-form：解析模型文本输出（扁平 12 键或旧式信封）。
-        last_error: ValueError | None = None
+        #    空结果（合法 JSON 但无任何字段）与解析失败同等对待：最多重试一次，
+        #    仍无字段则抛 EmptyExtractionError，避免静默产出全空结果。
+        last_error: Exception | None = None
         for attempt in range(2):
             text = await self.extraction_chain.ainvoke(variables)
             logger.debug(
@@ -223,10 +242,22 @@ class DeepSeekExtractionAgent:
             except ValueError as exc:
                 last_error = exc
                 logger.warning("DeepSeek 输出解析失败（第 %s 次）：%s", attempt + 1, exc)
-            else:
-                logger.debug("DeepSeek 抽取解析得到候选数：%s", len(candidates))
-                return self._ensure_all_fields(candidates)
-        raise ValueError(f"模型输出无法解析为 JSON：{last_error}")
+                continue
+            if not self._has_any_value(candidates):
+                last_error = EmptyExtractionError(
+                    f"模型输出不含任何字段（输出长度 {len(text)}）"
+                )
+                logger.warning(
+                    "DeepSeek 抽取结果为空（第 %s 次，输出长度 %s），准备重试",
+                    attempt + 1,
+                    len(text),
+                )
+                continue
+            logger.debug("DeepSeek 抽取解析得到候选数：%s", len(candidates))
+            return self._ensure_all_fields(candidates)
+        raise EmptyExtractionError(
+            f"EMPTY_EXTRACTION: 模型输出无法产生有效字段候选：{last_error}"
+        ) from last_error
 
     @staticmethod
     def _schema_to_candidates(result: PoOrderExtraction) -> list[FieldCandidate]:
@@ -280,14 +311,37 @@ class DeepSeekExtractionAgent:
         return str(content)
 
     @staticmethod
+    def _has_any_value(candidates: list[FieldCandidate]) -> bool:
+        """是否至少有一个带值的候选（全 missing 视为模型没产出内容）。"""
+
+        return any(candidate.value is not None for candidate in candidates)
+
+    @staticmethod
+    def _unwrap_payload(payload: Any) -> Any:
+        """剥掉模型偶发添加的包装层（如 {"result": {...}}）。"""
+
+        if not isinstance(payload, dict) or len(payload) != 1:
+            return payload
+        (only_key, only_value), = payload.items()
+        if isinstance(only_value, dict) and str(only_key).lower() in PAYLOAD_WRAPPER_KEYS:
+            return only_value
+        return payload
+
+    @staticmethod
     def _parse_candidates(text: str) -> list[FieldCandidate]:
         """将模型文本输出容错解析为字段候选（容忍代码块与前后缀文字）。
 
         支持两种结构：扁平 12 键对象（推荐）与旧式 {"candidates": [...]} 信封。
+        输出里连一个订单字段都没有时（空对象、包装层未识别）直接判为解析失败，
+        交由调用方重试——否则 _parse_flat 会静默产出 12 个 missing 候选。
         """
 
-        payload = DeepSeekExtractionAgent._extract_json_payload(text)
+        payload = DeepSeekExtractionAgent._unwrap_payload(
+            DeepSeekExtractionAgent._extract_json_payload(text)
+        )
         if isinstance(payload, dict) and "candidates" not in payload:
+            if not any(key in payload for key in PO_ORDER_KEYS):
+                raise ValueError(f"输出中没有任何订单字段（顶层键：{list(payload)[:10]}）")
             return DeepSeekExtractionAgent._parse_flat(payload)
         try:
             envelope = ExtractionEnvelope.model_validate(payload)

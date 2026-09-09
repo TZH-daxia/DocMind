@@ -63,6 +63,30 @@ class Settings(BaseSettings):
     port_cache_ttl_hours: float = 24.0
     max_file_size_bytes: int = 200 * 1024 * 1024
     allowed_extensions: tuple[str, ...] = (".doc", ".docx", ".xls", ".xlsx", ".pdf")
+    # 同时存活的工作流任务数上限（超出的快照保持 queued 排队）：只做兜底，防止
+    # 一次堆积几十个任务把内存和文件句柄吃满；真正的资源节流交给下面两个阶段闸门
+    max_concurrent_tasks: int = Field(
+        default=12,
+        ge=1,
+        validation_alias="DOCMIND_MAX_CONCURRENT_TASKS",
+    )
+    # 同时进行的 LibreOffice 转换上限：每个转换会拉起独立 soffice 进程
+    # （XLS 还额外占用一个 UNO 端口）。单实例常驻内存约 200~400MB，默认 5 让
+    # 一人一次上传的 5 份文件可以并行转换（峰值约 1.5GB）；机器内存吃紧或出现
+    # 转换超时时调小到 2~3
+    libreoffice_max_concurrent: int = Field(
+        default=5,
+        ge=1,
+        validation_alias="DOCMIND_LO_MAX_CONCURRENT",
+    )
+    # 同时进行的模型调用上限（视觉识别 + 字段抽取）：这两步是长时间的网络等待，
+    # 不占 CPU，默认按"单个用户一次上传 5 份"给到 5，使 5 个任务能同时在等模型；
+    # 若上游返回 429 或大面积超时，调小该值即可
+    model_max_concurrent: int = Field(
+        default=5,
+        ge=1,
+        validation_alias="DOCMIND_MODEL_MAX_CONCURRENT",
+    )
     # LibreOffice soffice 可执行路径：doc/xls 转 PDF 的统一方案（跨平台，不依赖 Office）；
     # 留空时按 PATH 与常见安装位置自动探测
     libreoffice_path: str = Field(default="", validation_alias="DOCMIND_SOFFICE_PATH")
@@ -72,6 +96,12 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         validation_alias="DOCMIND_RENDER_BLANK_PAGE_RATIO",
+    )
+    # 任务产物保留时长（小时）：启动时与每小时清理一次，0 表示永久保留
+    data_retention_hours: float = Field(
+        default=24.0,
+        ge=0.0,
+        validation_alias="DOCMIND_DATA_RETENTION_HOURS",
     )
 
 

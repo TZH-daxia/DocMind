@@ -99,8 +99,12 @@ uv run uvicorn app.main:app --port 8001 --reload
 |---|---|---|
 | `DOCMIND_SOFFICE_PATH` | 空（自动探测） | LibreOffice `soffice` 可执行路径；留空按 PATH 与常见安装位置探测 |
 | `DOCMIND_RENDER_BLANK_PAGE_RATIO` | `0.005` | 近空白页过滤阈值（非白像素占比），设 `0` 关闭过滤 |
+| `DOCMIND_DATA_RETENTION_HOURS` | `24.0` | 任务产物保留时长（小时）：`uploaded_documents` / `parsed_documents` / `analysis_results` 中超过该时长的内容会在服务启动时与每小时自动清理（运行中的任务跳过，`reference_cache` 不参与）；设 `0` 永久保留 |
 | `DOCMIND_RELOAD` | `0`（关闭） | 热重载默认关闭：reload 会中断在途分析任务；调试时显式设 `1` |
 | `DOCMIND_CONSOLE_LOG` | `0`（关闭） | 控制台日志开关，默认只写 `logs/app.log`（写 stdout 管道可能阻塞事件循环） |
+| `DOCMIND_MAX_CONCURRENT_TASKS` | `12` | 同时存活的任务数上限（兜底），超出的任务快照保持 `queued` 排队 |
+| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 同时进行的 LibreOffice 转换数：每个转换拉起独立 `soffice` 进程（单实例约 200~400MB），内存吃紧或转换超时时调小到 2~3 |
+| `DOCMIND_MODEL_MAX_CONCURRENT` | `5` | 同时进行的模型调用数（视觉识别 + 字段抽取），上游 429 或大面积超时时调小 |
 
 `converter` 字段（`render_meta.json` / `task_status.json`）记录实际使用的渲染路径：
 `pymupdf` / `libreoffice_uno`（含行列展开与行高修正）/ `libreoffice`（CLI 直接转换）/
