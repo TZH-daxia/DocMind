@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "DocMind"
-    api_prefix: str = "/api/v1"
+    # 所有业务接口的统一前缀（改这里必须同步改前端 app/static/api.js 与
+    # app/static/result-dialog/api.js 里的接口根路径）
+    api_prefix: str = Field(default="/docmind", validation_alias="DOCMIND_API_PREFIX")
     app_host: str = Field(default="127.0.0.1", validation_alias="DOCMIND_HOST")
     app_port: int = Field(default=8000, validation_alias="DOCMIND_PORT")
 
@@ -61,12 +63,19 @@ class Settings(BaseSettings):
     port_api_base: str = Field(default="", validation_alias="DOCMIND_PORT_API_BASE")
     # 港口主数据本地缓存有效期（小时），过期后重新拉取
     port_cache_ttl_hours: float = 24.0
-    max_file_size_bytes: int = 200 * 1024 * 1024
+    # 单文件大小上限：托书均为单页文档，50MB 已足够宽松；注意校验发生在
+    # 上传内容读入内存之后，调大会同时放大单次请求的内存占用
+    max_file_size_bytes: int = Field(
+        default=50 * 1024 * 1024,
+        ge=1,
+        validation_alias="DOCMIND_MAX_FILE_SIZE_BYTES",
+    )
     allowed_extensions: tuple[str, ...] = (".doc", ".docx", ".xls", ".xlsx", ".pdf")
     # 同时存活的工作流任务数上限（超出的快照保持 queued 排队）：只做兜底，防止
-    # 一次堆积几十个任务把内存和文件句柄吃满；真正的资源节流交给下面两个阶段闸门
+    # 一次堆积几十个任务把内存和文件句柄吃满；真正的资源节流交给下面两个阶段闸门。
+    # 20 可覆盖"3 人同时各上传 5 份（15 个任务）"全部进入流水线
     max_concurrent_tasks: int = Field(
-        default=12,
+        default=20,
         ge=1,
         validation_alias="DOCMIND_MAX_CONCURRENT_TASKS",
     )
@@ -80,10 +89,10 @@ class Settings(BaseSettings):
         validation_alias="DOCMIND_LO_MAX_CONCURRENT",
     )
     # 同时进行的模型调用上限（视觉识别 + 字段抽取）：这两步是长时间的网络等待，
-    # 不占 CPU，默认按"单个用户一次上传 5 份"给到 5，使 5 个任务能同时在等模型；
-    # 若上游返回 429 或大面积超时，调小该值即可
+    # 不占 CPU。默认 8 让"3 人各上传 5 份（15 个任务）"两批就能走完模型阶段；
+    # 若上游返回 429 或大面积超时，调小（5 → 3）即可
     model_max_concurrent: int = Field(
-        default=5,
+        default=8,
         ge=1,
         validation_alias="DOCMIND_MODEL_MAX_CONCURRENT",
     )

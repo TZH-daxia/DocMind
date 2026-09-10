@@ -105,7 +105,8 @@ class AnalysisService(WorkflowEventPublisher):
         self._validate_content(Path(upload.filename), upload.content)
         task_id = self.file_store.new_task_id(upload.filename)
         document_id = self.file_store.new_document_id()
-        uploaded_path, _ = self.file_store.save_upload(upload)
+        # 原件存进该任务自己的目录：并发上传同名文件时不会互相覆盖
+        uploaded_path, _ = self.file_store.save_task_upload(task_id, upload)
         created_at = now_iso()
         status = {
             "task_id": task_id,

@@ -99,12 +99,26 @@ uv run uvicorn app.main:app --port 8000 --reload
 |---|---|---|
 | `DOCMIND_SOFFICE_PATH` | 空（自动探测） | LibreOffice `soffice` 可执行路径；留空按 PATH 与常见安装位置探测 |
 | `DOCMIND_RENDER_BLANK_PAGE_RATIO` | `0.005` | 近空白页过滤阈值（非白像素占比），设 `0` 关闭过滤 |
-| `DOCMIND_DATA_RETENTION_HOURS` | `24.0` | 任务产物保留时长（小时）：`uploaded_documents` / `parsed_documents` / `analysis_results` 中超过该时长的内容会在服务启动时与每小时自动清理（运行中的任务跳过，`reference_cache` 不参与）；设 `0` 永久保留 |
+| `DOCMIND_DATA_RETENTION_HOURS` | `24.0` | 任务产物保留时长（小时）：`parsed_documents`（含上传原件）与 `analysis_results` 中超过该时长的内容会在服务启动时与每小时自动清理（运行中的任务跳过，`reference_cache` 不参与）；设 `0` 永久保留。建议大于单任务最长耗时，否则可能删掉在途任务的原件 |
 | `DOCMIND_RELOAD` | `0`（关闭） | 热重载默认关闭：reload 会中断在途分析任务；调试时显式设 `1` |
 | `DOCMIND_CONSOLE_LOG` | `0`（关闭） | 控制台日志开关，默认只写 `logs/app.log`（写 stdout 管道可能阻塞事件循环） |
-| `DOCMIND_MAX_CONCURRENT_TASKS` | `12` | 同时存活的任务数上限（兜底），超出的任务快照保持 `queued` 排队 |
-| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 同时进行的 LibreOffice 转换数：每个转换拉起独立 `soffice` 进程（单实例约 200~400MB），内存吃紧或转换超时时调小到 2~3 |
-| `DOCMIND_MODEL_MAX_CONCURRENT` | `5` | 同时进行的模型调用数（视觉识别 + 字段抽取），上游 429 或大面积超时时调小 |
+| `DOCMIND_MAX_CONCURRENT_TASKS` | `20` | 同时存活的任务数上限（兜底），超出的任务快照保持 `queued` 排队；默认可覆盖"3 人同时各上传 5 份" |
+| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 同时进行的 LibreOffice 转换数：每个转换拉起独立 `soffice` 进程（单实例约 200~400MB），不建议超过 CPU 核数，内存吃紧或转换超时时调小到 2~3 |
+| `DOCMIND_MODEL_MAX_CONCURRENT` | `8` | 同时进行的模型调用数（视觉识别 + 字段抽取），上游 429 或大面积超时时调小到 3~5 |
+| `DOCMIND_MAX_FILE_SIZE_BYTES` | `52428800`（50MB） | 单文件大小上限；校验发生在内容读入内存之后，调大会同步放大请求内存占用 |
+
+### 并发容量（默认参数）
+
+| 场景 | 表现 |
+|---|---|
+| 1 人上传 1~5 份 | 立即进入流水线，无排队 |
+| 3 人同时各上传 5 份（15 个任务） | 全部进入执行，无 `queued`；模型阶段分两批，约 4~6 分钟出完全部结果 |
+| 提交量超过 20 个任务 | 超出的任务保持 `queued` 排队，等前序任务结束后自动补位 |
+
+吞吐受 `DOCMIND_MODEL_MAX_CONCURRENT` 与上游响应耗时支配：单任务在模型阶段占用
+约 `VLM 转写 + 字段抽取`（thinking 开启时约 120s），据此 `8 并发 ≈ 240 份/小时`。
+LibreOffice 只处理 doc/docx/xls/xlsx（单页约 5~15s），PDF 走 PyMuPDF 直接光栅化，
+因此一般情况下不是瓶颈。真实容量请以服务器上的节点 `duration_ms` 实测为准。
 
 `converter` 字段（`render_meta.json` / `task_status.json`）记录实际使用的渲染路径：
 `pymupdf` / `libreoffice_uno`（含行列展开与行高修正）/ `libreoffice`（CLI 直接转换）/
@@ -188,30 +202,37 @@ curl http://127.0.0.1:8000/health
 
 ```text
 data/
-├─ uploaded_documents/
-│    └─ <原始文件名>                        用户上传的原件（按原名保存）
 ├─ parsed_documents/
 │    └─ task_<时间戳>_<文件名>_<id>/        单个任务的全部工作文件
+│         ├─ <原始文件名>                  上传原件（按任务隔离，同名不互相覆盖）
 │         ├─ <文件名>_converted.pdf         DOC/XLS 统一转换的 PDF 中间件
 │         ├─ <文件名>_page_001.png          渲染页面图片（VLM 输入）
 │         ├─ <文件名>_render_meta.json      渲染元信息
 │         ├─ <文件名>_vlm_image_content.md  VLM 视觉理解文档
 │         ├─ <文件名>_candidates.json       12 字段抽取候选
 │         └─ task_status.json / process.log 任务状态与节点事件流
-└─ analysis_results/
-     └─ <task_id>.json                     最终业务结果
+├─ analysis_results/
+│    └─ <task_id>.json                     最终业务结果
+└─ reference_cache/                        外部主数据本地缓存（港口 hbinfo，按自身 TTL 清理）
 ```
+
+> 上传原件存进各任务的 `parsed_documents/<task_id>/` 而非全局目录：托书模板常出现
+> 同名文件（如 `托书.xls`），全局存放会被后来的上传覆盖，而任务是在后台才读取源
+> 文件，会导致任务分析到别人的文档且不报错。
 
 ## API 概览
 
+> 接口统一前缀为 `/docmind`（由 `Settings.api_prefix` 控制，可用 `DOCMIND_API_PREFIX` 覆盖；
+> 修改时需同步前端 `app/static/api.js` 与 `app/static/result-dialog/api.js` 的接口根路径）。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/api/v1/analysis/tasks` | 上传托书创建任务（multipart，默认自动开始分析） |
-| `GET` | `/api/v1/analysis/files` | 任务文件列表 |
-| `GET` | `/api/v1/analysis/tasks/{id}` | 任务状态与进度 |
-| `GET` | `/api/v1/analysis/tasks/{id}/events` | SSE 实时节点事件（含历史回放，任务结束后自动关闭） |
-| `GET` | `/api/v1/analysis/tasks/{id}/events/history` | 已落盘的全部节点事件（回看已完成任务） |
-| `GET` | `/api/v1/analysis/tasks/{id}/result` | 分析结果 JSON |
+| `POST` | `/docmind/analysis/tasks` | 上传托书创建任务（multipart，默认自动开始分析） |
+| `GET` | `/docmind/analysis/files` | 任务文件列表 |
+| `GET` | `/docmind/analysis/tasks/{id}` | 任务状态与进度 |
+| `GET` | `/docmind/analysis/tasks/{id}/events` | SSE 实时节点事件（含历史回放，任务结束后自动关闭） |
+| `GET` | `/docmind/analysis/tasks/{id}/events/history` | 已落盘的全部节点事件（回看已完成任务） |
+| `GET` | `/docmind/analysis/tasks/{id}/result` | 分析结果 JSON |
 
 ### 结果结构示例
 
@@ -284,8 +305,8 @@ uv run mypy app          # 类型检查
 
 ## 设计约定
 
-- 所有文件读写经 `app/storage`，路径基于 `DOCMIND_DATA_ROOT`，`data/` 只保留
-  uploaded_documents / parsed_documents / analysis_results 三个目录；
+- 所有文件读写经 `app/storage`，路径基于 `DOCMIND_DATA_ROOT`；上传原件与任务产物
+  统一放在 `parsed_documents/<task_id>/`（同名文件不会跨任务互相干扰）；
 - 文档渲染经 `app/collector/document_renderer.py`：页面上限 10 页、光栅化 200 DPI，
   近空白页（非白像素占比低于阈值）自动过滤不送 VLM；VLM 输入上限 6 张图：
   每页整页图，第一页额外附上下两半放大图（12% 重叠，保证小字号可辨认）；

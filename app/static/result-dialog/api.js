@@ -1,4 +1,5 @@
-const BASE_URL = "/api/v1/analysis";
+// 与后端 Settings.api_prefix + router 前缀保持一致（见 app/config.py）
+const BASE_URL = "/docmind/analysis";
 
 export function pageImageUrl(taskId, pageNo) {
   return `${BASE_URL}/tasks/${encodeURIComponent(taskId)}/pages/${pageNo}`;

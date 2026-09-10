@@ -19,15 +19,13 @@ class FileStore:
     """管理配置数据根目录下的所有运行文件。
 
     目录契约：
-    - uploaded_documents/<原始文件名>          用户上传的原件；
     - parsed_documents/<task_id>/             单个任务的全部工作文件
-      （渲染图片、文本层、VLM 文档、任务状态、事件日志、中间候选 JSON）；
+      （上传原件、渲染图片、文本层、VLM 文档、任务状态、事件日志、中间候选 JSON）；
     - analysis_results/<task_id>.json         最终业务结果；
     - reference_cache/                        外部主数据本地缓存（港口 hbinfo）。
     """
 
     DIRECTORY_NAMES = (
-        "uploaded_documents",
         "parsed_documents",
         "analysis_results",
         "reference_cache",
@@ -74,12 +72,19 @@ class FileStore:
         safe_stem = re.sub(r"[^\w.-]+", "_", stem, flags=re.UNICODE).strip("._") or "document"
         return f"{safe_stem[:120]}{suffix}"
 
-    def save_upload(self, upload: UploadedDocument) -> tuple[Path, bytes]:
-        """以原始文件名保存上传文档（同名覆盖）。"""
+    def save_task_upload(
+        self, task_id: str, upload: UploadedDocument
+    ) -> tuple[Path, bytes]:
+        """把上传原件保存到该任务自己的目录。
+
+        不放在全局共享目录下：多人并发上传同名文件（托书模板常见同名）时，
+        后来的会覆盖先前的，而任务是在后台才真正读源文件，会导致任务读到别人
+        的原件且无任何报错。放进任务目录后天然隔离，也随任务目录一起被清理。
+        """
 
         content = upload.content
         filename = self.safe_filename(upload.filename or "document")
-        destination = self.root / "uploaded_documents" / filename
+        destination = self.task_dir("parsed_documents", task_id) / filename
         self.write_bytes_atomic(destination, content)
         return destination, content
 
@@ -172,8 +177,8 @@ class FileStore:
     def cleanup_expired(self, retention_hours: float) -> list[str]:
         """删除超过保留期的运行产物，返回被清理条目的相对路径。
 
-        清理范围：parsed_documents/task_*（整目录，running 状态跳过，防止误删
-        在途任务）、uploaded_documents 与 analysis_results 下的文件；
+        清理范围：parsed_documents/task_*（整目录，含任务目录内的上传原件；
+        running 状态跳过，防止误删在途任务）与 analysis_results 下的结果文件；
         reference_cache 是带自身 TTL 的主数据缓存，不参与清理。
         retention_hours <= 0 表示永久保留（禁用清理）。
         """
@@ -193,9 +198,9 @@ class FileStore:
                 logger.info("任务仍在运行，跳过清理：%s", task_dir.name)
                 continue
             removed.extend(self._remove_if_expired(task_dir, cutoff))
-        for category in ("uploaded_documents", "analysis_results"):
-            directory = self.root / category
-            for path in sorted(directory.iterdir()):
+        results_dir = self.root / "analysis_results"
+        if results_dir.exists():
+            for path in sorted(results_dir.iterdir()):
                 removed.extend(self._remove_if_expired(path, cutoff))
         if removed:
             logger.info("已清理 %s 个超过保留期的运行产物", len(removed))

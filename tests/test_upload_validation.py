@@ -71,6 +71,14 @@ def test_unsupported_extension_is_rejected() -> None:
         service._validate_upload_metadata(upload)
 
 
+def test_oversized_content_is_rejected() -> None:
+    """超过大小上限的文件被拒绝（用 1KB 上限免于构造大文件）。"""
+
+    service = build_service(DOCMIND_MAX_FILE_SIZE_BYTES=1024)
+    with pytest.raises(ValueError, match="FILE_TOO_LARGE"):
+        service._validate_content(Path("a.pdf"), b"%PDF-1.7" + b"\x00" * 1024)
+
+
 def test_empty_content_is_rejected() -> None:
     service = build_service()
     with pytest.raises(ValueError, match="FILE_EMPTY"):

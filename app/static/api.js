@@ -1,5 +1,6 @@
 const analysisApi = {
-  baseUrl: "/api/v1/analysis",
+  // 与后端 Settings.api_prefix + router 前缀保持一致（见 app/config.py）
+  baseUrl: "/docmind/analysis",
 
   async listFiles() {
     return request(`${this.baseUrl}/files`);

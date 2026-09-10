@@ -58,19 +58,16 @@ def test_recent_task_kept(tmp_path: Path) -> None:
     assert removed == []
 
 
-def test_upload_and_result_files_removed(tmp_path: Path) -> None:
+def test_expired_result_files_removed(tmp_path: Path) -> None:
     store = make_store(tmp_path)
-    upload = tmp_path / "uploaded_documents" / "a.pdf"
-    upload.write_bytes(b"x")
     result = tmp_path / "analysis_results" / "task_old.json"
     result.write_text("{}", encoding="utf-8")
-    age_path(upload, 2)
     age_path(result, 2)
 
     removed = store.cleanup_expired(24.0)
 
-    assert not upload.exists() and not result.exists()
-    assert len(removed) == 2
+    assert not result.exists()
+    assert len(removed) == 1
 
 
 def test_reference_cache_untouched(tmp_path: Path) -> None:
