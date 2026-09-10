@@ -10,7 +10,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.dependencies import get_analysis_service
 from app.schemas.analysis import AnalysisContext
@@ -121,3 +121,18 @@ async def get_analysis_result(
         return service.get_result(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="RESULT_NOT_FOUND") from exc
+
+
+@router.get("/tasks/{task_id}/pages/{page_no}")
+async def get_analysis_page_image(
+    task_id: str,
+    page_no: int,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> FileResponse:
+    """返回任务指定页的渲染图片，供前端预览区展示原件。"""
+
+    try:
+        image_path = service.get_page_image_path(task_id, page_no)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="PAGE_NOT_FOUND") from exc
+    return FileResponse(image_path, media_type="image/png")

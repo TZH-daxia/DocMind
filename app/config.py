@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     app_name: str = "DocMind"
     api_prefix: str = "/api/v1"
     app_host: str = Field(default="127.0.0.1", validation_alias="DOCMIND_HOST")
-    app_port: int = Field(default=8001, validation_alias="DOCMIND_PORT")
+    app_port: int = Field(default=8000, validation_alias="DOCMIND_PORT")
 
     system_log_file: Path = Field(
         default=Path("logs/app.log"),

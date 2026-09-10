@@ -28,6 +28,7 @@ const elements = {
   resultSummary: document.querySelector("#resultSummary"),
   resultJson: document.querySelector("#resultJson"),
   copyButton: document.querySelector("#copyButton"),
+  prepareButton: document.querySelector("#prepareButton"),
   toast: document.querySelector("#toast"),
 };
 const nodeRows = new Map();
@@ -38,10 +39,16 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.fileInput.addEventListener("change", onFileSelected);
   elements.refreshButton.addEventListener("click", loadFiles);
   elements.copyButton.addEventListener("click", copyResult);
+  elements.prepareButton.addEventListener("click", openPrepareDialog);
+  document.addEventListener("docmind:toast", onDialogToast);
   initEventList();
   initDragAndDrop();
   loadFiles();
 });
+function onDialogToast(event) {
+  const detail = event.detail || {};
+  showToast(detail.message || "", detail.type || "");
+}
 async function loadFiles() {
   try {
     const payload = await analysisApi.listFiles();
@@ -328,6 +335,8 @@ function renderEvents(taskEvents, animate = false) {
   });
 }
 function renderResult(result, status) {
+  // 「准备提交」仅在任务完成且有结果时点亮，运行中/失败/未选任务一律置灰
+  elements.prepareButton.disabled = !isResultReady(result, status);
   if (!result) {
     elements.resultSummary.innerHTML = "<span>暂无结果</span>";
     elements.resultJson.innerHTML = "<code>{}</code>";
@@ -354,6 +363,19 @@ async function copyResult() {
   if (!content || content === "{}") return;
   await navigator.clipboard.writeText(content);
   showToast("JSON 已复制", "success");
+}
+function isResultReady(result, status) {
+  return Boolean(result && result.task_id) && status !== "failed";
+}
+async function openPrepareDialog() {
+  const taskId = state.selectedTaskId;
+  if (!taskId) return;
+  const item = state.files.find((file) => file.task_id === taskId);
+  if (!item?.result_available) {
+    showToast("结果尚未生成，暂时无法准备提交", "error");
+    return;
+  }
+  await window.DocMindResultDialog?.open(taskId);
 }
 function stopEvents() {
   if (state.eventSource) {

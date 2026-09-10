@@ -76,20 +76,20 @@ uv sync
 # 2. 配置环境变量：复制示例文件并填入真实 DeepSeek API Key
 cp .env.example .env
 
-# 3. 启动服务（默认 127.0.0.1:8001）
+# 3. 启动服务（默认 127.0.0.1:8000）
 uv run python main.py
 
 # 或使用 uvicorn（支持热重载）
-uv run uvicorn app.main:app --port 8001 --reload
+uv run uvicorn app.main:app --port 8000 --reload
 ```
 
 启动后访问：
 
 | 地址 | 说明 |
 |---|---|
-| `http://127.0.0.1:8001/` | 内置分析前端（拖拽上传即自动运行、节点时间线、查看结果） |
-| `http://127.0.0.1:8001/docs` | OpenAPI 接口文档 |
-| `http://127.0.0.1:8001/health` | 健康检查 |
+| `http://127.0.0.1:8000/` | 内置分析前端（拖拽上传即自动运行、节点时间线、查看结果） |
+| `http://127.0.0.1:8000/docs` | OpenAPI 接口文档 |
+| `http://127.0.0.1:8000/health` | 健康检查 |
 
 ## 配置
 
@@ -138,12 +138,12 @@ docker compose up -d --build
 docker compose logs -f docmind
 
 # 5. 健康检查
-curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8000/health
 ```
 
-启动后浏览器打开 `http://<服务器IP>:8001/` 即可使用（接口文档 `/docs`）。
+启动后浏览器打开 `http://<服务器IP>:8000/` 即可使用（接口文档 `/docs`）。
 
-改宿主端口：`HOST_PORT=9001 docker compose up -d`（容器内固定 8001）。
+改宿主端口：`HOST_PORT=9001 docker compose up -d`（容器内固定 8000）。
 
 ### 数据与日志
 
@@ -158,7 +158,7 @@ curl http://127.0.0.1:8001/health
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `HOST_PORT` | `8001` | 宿主机映射端口（compose 读取，非应用变量） |
+| `HOST_PORT` | `8000` | 宿主机映射端口（compose 读取，非应用变量） |
 | `DOCMIND_HOST` | `0.0.0.0` | compose 已强制设置：容器内监听 `127.0.0.1` 时宿主机访问不到 |
 | `DEEPSEEK_API_KEY` | 必填 | 缺失时服务启动即失败，表现为容器反复重启 |
 | `DOCMIND_LO_MAX_CONCURRENT` | `5` | 内存吃紧或转换超时时调小到 2~3 |

@@ -411,6 +411,27 @@ class AnalysisService(WorkflowEventPublisher):
             raise FileNotFoundError(task_id)
         return self.file_store.read_json(path)
 
+    def get_page_image_path(self, task_id: str, page_no: int) -> Path:
+        """返回任务渲染图片的本地路径，供前端预览区展示原件。
+
+        `page_no` 从 1 开始，与渲染元信息中的图片顺序一致；任务不存在、
+        渲染元信息缺失或页码越界时抛 FileNotFoundError，由调用方转换为 404。
+        """
+
+        status = self.get_task_status(task_id)
+        source_stem = self.file_store.source_stem(status.get("original_name"))
+        task_directory = self.file_store.root / "parsed_documents" / task_id
+        metadata_path = task_directory / f"{source_stem}_render_meta.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(task_id)
+        images = self.file_store.read_json(metadata_path).get("images") or []
+        if page_no < 1 or page_no > len(images):
+            raise FileNotFoundError(f"{task_id}#page_{page_no}")
+        image_path = task_directory / str(images[page_no - 1])
+        if not image_path.exists():
+            raise FileNotFoundError(f"{task_id}#page_{page_no}")
+        return image_path
+
     async def render_document(self, state: AnalysisState) -> dict[str, Any]:
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
 

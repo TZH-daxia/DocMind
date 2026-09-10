@@ -405,6 +405,24 @@ select:focus {
   color: var(--teal);
 }
 
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.prepare-button:not(:disabled) {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: var(--surface);
+}
+
+.prepare-button:hover:not(:disabled) {
+  border-color: #0f877d;
+  color: var(--surface);
+}
+
 .selected-file {
   gap: 11px;
   padding: 20px 21px 15px;
@@ -695,5 +713,331 @@ select:focus {
 
   .result-json {
     padding: 15px;
+  }
+}
+
+/* ---- 结果弹窗：左侧原件预览 + 右侧字段表单（Vue 3 渲染） ---- */
+.doc-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(23, 33, 43, 0.45);
+}
+
+.doc-dialog {
+  width: min(1480px, 94vw);
+  height: min(900px, 88vh);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 28px 60px rgba(16, 27, 36, 0.32);
+}
+
+.doc-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-dialog-head h1 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: var(--navy);
+}
+
+.doc-dialog-task {
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.doc-dialog-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.doc-dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.doc-dialog-preview,
+.doc-dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.doc-dialog-preview {
+  border-right: 1px solid var(--line);
+  background: var(--canvas);
+}
+
+.doc-dialog-preview-head,
+.doc-dialog-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.doc-dialog-preview-head strong,
+.doc-dialog-form-head strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--navy);
+}
+
+.doc-dialog-preview-head small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.doc-dialog-preview-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.doc-dialog-page {
+  width: 100%;
+  max-width: 760px;
+  min-height: 60px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.doc-dialog-page-item {
+  width: 100%;
+  max-width: 760px;
+  margin: 0;
+}
+
+.doc-dialog-page-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.doc-dialog-page-caption a {
+  margin-left: 6px;
+  color: var(--teal);
+}
+
+.doc-dialog-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.doc-dialog-collapse {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--navy);
+  font-size: 12px;
+}
+
+.doc-dialog-collapse:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.doc-dialog-submit {
+  padding: 8px 18px;
+  border: 1px solid var(--teal);
+  border-radius: 5px;
+  background: var(--teal);
+  color: var(--surface);
+  font-size: 12px;
+}
+
+.doc-dialog-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.doc-dialog-form.is-disabled .doc-dialog-table-wrap {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.doc-dialog-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.doc-dialog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.doc-dialog-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.doc-dialog-table thead th:first-child {
+  width: 248px;
+}
+
+.doc-dialog-table tbody tr {
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-dialog-table tbody tr.has-error {
+  background: var(--red-soft);
+}
+
+.doc-dialog-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 12px 18px;
+  color: var(--navy);
+  font-weight: 600;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.doc-dialog-field-label {
+  display: block;
+}
+
+.doc-dialog-required {
+  margin-left: 3px;
+  color: var(--red);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.doc-dialog-value {
+  padding: 9px 18px 11px 0;
+  vertical-align: top;
+}
+
+.doc-dialog-badge {
+  display: inline-block;
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-style: normal;
+  text-align: center;
+}
+
+.doc-dialog-badge.needs_review,
+.doc-dialog-badge.missing,
+.doc-dialog-badge.conflict,
+.doc-dialog-badge.invalid {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.doc-dialog-badge.edited {
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+
+.doc-dialog-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.doc-dialog-input:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.doc-dialog-input.is-computed {
+  background: var(--canvas);
+  color: var(--navy);
+  font-weight: 600;
+}
+
+.doc-dialog-hint,
+.doc-dialog-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.doc-dialog-hint {
+  color: var(--muted);
+}
+
+.doc-dialog-error {
+  color: var(--red);
+}
+
+.doc-dialog-empty {
+  margin: auto;
+  color: #9aa8af;
+  font-size: 12px;
+}
+
+@media (max-width: 1024px) {
+  .doc-dialog {
+    width: 96vw;
+    height: 92vh;
+  }
+
+  .doc-dialog-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(200px, 40%) 1fr;
+  }
+
+  .doc-dialog-preview {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
   }
 }
