@@ -29,6 +29,9 @@ export const ResultDialog = {
     onCollapse() {
       resultDialog.close();
     },
+    onFieldFocus(payload) {
+      resultDialog.focusField(payload);
+    },
     onSubmit() {
       const outcome = resultDialog.submit();
       if (outcome.ok) {
@@ -64,21 +67,25 @@ export const ResultDialog = {
         </header>
         <div class="doc-dialog-body">
           <DocumentPreview
-            :file-name="state.fileName"
             :page-urls="state.pageUrls"
             :loading="state.loading"
             :error="state.error"
+            :highlight-boxes="state.highlightBoxes"
+            :highlight-status="state.highlightStatus"
+            :highlight-key="state.focusedLocationKey"
           />
           <FieldFormPanel
             :rows="fields"
             :form="state.form"
             :original="state.original"
             :raw-values="state.rawValues"
+            :locations="state.locations"
             :errors="state.errors"
             :submitting="state.submitting"
             :disabled="formDisabled"
             @submit="onSubmit"
             @collapse="onCollapse"
+            @field-focus="onFieldFocus"
           />
         </div>
       </section>

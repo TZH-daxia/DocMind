@@ -89,6 +89,19 @@ class PoOrderExtraction(BaseModel):
     englishpm: ExtractedField = Field(description="英文品名")
 
 
+class EvidenceLocation(BaseModel):
+    """字段值在源文档中的位置，供前端在原件预览上叠加高亮框。
+
+    target 标明该位置对应表单的哪一行：标量字段为字段 key，参与人字段为
+    `key.subkey`（如 `shipper.address`）；bbox 为归一化坐标 [x, y, w, h]（0~1，
+    相对页面宽高），因此与页面图片的渲染分辨率无关。
+    """
+
+    target: str
+    page: int = Field(ge=1)
+    bbox: list[float] = Field(min_length=4, max_length=4)
+
+
 class FieldMetadata(BaseModel):
     """一个输出字段的最终元数据。"""
 
@@ -96,6 +109,8 @@ class FieldMetadata(BaseModel):
     status: FieldStatus
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     evidence: list[Evidence] = Field(default_factory=list)
+    # 定位不到时为空列表，前端按"未定位"展示，不画框
+    locations: list[EvidenceLocation] = Field(default_factory=list)
 
 
 class ValidationResult(BaseModel):

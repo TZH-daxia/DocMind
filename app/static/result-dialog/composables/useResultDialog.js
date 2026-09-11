@@ -68,6 +68,21 @@ function isControlValueValid(control, text) {
   return true;
 }
 
+function collectLocations(fieldMeta) {
+  // 后端按 target（字段 key 或 key.subkey）给出定位框，前端按行 id 直接取用
+  const locations = {};
+  for (const meta of Object.values(fieldMeta)) {
+    for (const item of meta?.locations || []) {
+      if (!item?.target) {
+        continue;
+      }
+      locations[item.target] = locations[item.target] || [];
+      locations[item.target].push({ page: item.page, bbox: item.bbox });
+    }
+  }
+  return locations;
+}
+
 function applyResult(result) {
   const values = result.result || {};
   const meta = result.field_meta || {};
@@ -105,6 +120,10 @@ function applyResult(result) {
   dialogState.original = original;
   dialogState.fieldStatus = fieldStatus;
   dialogState.rawValues = rawValues;
+  dialogState.locations = collectLocations(meta);
+  dialogState.focusedLocationKey = "";
+  dialogState.highlightBoxes = [];
+  dialogState.highlightStatus = "";
   dialogState.errors = {};
   dialogState.submitting = false;
   dialogState.error = "";
@@ -122,6 +141,22 @@ export const resultDialog = {
   close() {
     dialogState.visible = false;
     dialogState.errors = {};
+  },
+
+  focusField({ locationKey, fieldKey, status, hasValue }) {
+    // 聚焦即高亮：优先用该行的定位框，退化到所属字段的框；都没有则清空
+    if (hasValue === false) {
+      // 空值行不定位：清掉上一处高亮，避免误导成"这个空字段来自原文该处"
+      dialogState.focusedLocationKey = "";
+      dialogState.highlightStatus = "";
+      dialogState.highlightBoxes = [];
+      return;
+    }
+    dialogState.focusedLocationKey = locationKey || "";
+    dialogState.highlightStatus = status || "";
+    const own = locationKey ? dialogState.locations[locationKey] : null;
+    const fallback = fieldKey ? dialogState.locations[fieldKey] : null;
+    dialogState.highlightBoxes = own?.length ? own : fallback || [];
   },
 
   submit() {

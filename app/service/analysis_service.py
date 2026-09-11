@@ -13,6 +13,14 @@ from app.agent.deepseek_extractor import (
     ImageInput,
 )
 from app.collector.document_renderer import LocalDocumentRenderer
+from app.collector.evidence_locator import (
+    DocumentTextIndex,
+    LocatedBox,
+    context_needles,
+    normalize_needle,
+    quote_segments,
+    resolve_source_pdf,
+)
 from app.config import Settings
 from app.prompts.loader import (
     load_po_order_extraction_prompt,
@@ -22,6 +30,7 @@ from app.schemas.analysis import (
     AnalysisContext,
     AnalysisResult,
     Evidence,
+    EvidenceLocation,
     FieldCandidate,
     FieldMetadata,
     ValidationResult,
@@ -29,6 +38,7 @@ from app.schemas.analysis import (
 from app.schemas.file import UploadedDocument
 from app.schemas.po_order import (
     CONTEXT_ONLY_KEYS,
+    PARTY_KEYS,
     PO_ORDER_KEYS,
     PORT_FIELD_KEYS,
 )
@@ -59,6 +69,100 @@ VLM_MIN_CONTENT_CHARS = 200
 VLM_MAX_ATTEMPTS = 3
 # VLM 拒答重试前的退避基数（第 n 次重试等待 n × 基数秒）
 VLM_RETRY_BACKOFF_SECONDS = 2.0
+
+def _collect_boxes(index: DocumentTextIndex, needles: list[str]) -> list[LocatedBox]:
+    """收集一组检索词的全部命中位置（用于"引用框"范围判定）。"""
+
+    boxes: list[LocatedBox] = []
+    for needle in needles:
+        if needle:
+            boxes.extend(index.search(needle))
+    return boxes
+
+
+def _pick_box(
+    index: DocumentTextIndex,
+    needles: list[str],
+    quote_boxes: list[LocatedBox],
+) -> LocatedBox | None:
+    """按可信度依次尝试检索词，返回第一个可确定的位置。
+
+    调用方给定的顺序：带上下文的值片段（如 `74kg`）→ 裸值 → 引用片段。
+    单个检索词命中多处时用证据引用框收窄；收窄后仍不唯一则改试下一个
+    检索词，全部试完仍不确定返回 None——宁可不标，也不标错位置。
+    每个检索词内部先词级精确匹配（避免 "1" 命中 "1PLT"），再子串匹配。
+    """
+
+    for needle in needles:
+        if not needle:
+            continue
+        for searcher in (index.search_word, index.search):
+            matches = searcher(needle)
+            if not matches:
+                continue
+            if len(matches) == 1:
+                return matches[0]
+            if quote_boxes:
+                narrowed = [
+                    box
+                    for box in matches
+                    if any(box.near(quote) for quote in quote_boxes)
+                ]
+                if narrowed:
+                    return narrowed[0]
+            break
+    return None
+
+
+def _value_needles(value: str, quotes: list[str]) -> list[str]:
+    """值类字段的检索词优先级：引用派生的带上下文片段 → 裸值。"""
+
+    return [*context_needles(value, quotes), value]
+
+
+def _union_boxes(boxes: list[LocatedBox]) -> LocatedBox | None:
+    """把同一区域的多个框合并为一个覆盖框。
+
+    用于参与人字段：发货人/收货人的名称、地址、电话、邮箱在原文件中本就是
+    同一块区域，任何一项命中都代表整块的位置。跨页时以框最多的那一页为准。
+    """
+
+    if not boxes:
+        return None
+    by_page: dict[int, list[LocatedBox]] = {}
+    for box in boxes:
+        by_page.setdefault(box.page, []).append(box)
+    page = max(by_page, key=lambda item: len(by_page[item]))
+    group = by_page[page]
+    left = min(box.bbox[0] for box in group)
+    top = min(box.bbox[1] for box in group)
+    right = max(box.bbox[0] + box.bbox[2] for box in group)
+    bottom = max(box.bbox[1] + box.bbox[3] for box in group)
+    return LocatedBox(
+        page=page,
+        bbox=(
+            round(left, 4),
+            round(top, 4),
+            round(right - left, 4),
+            round(bottom - top, 4),
+        ),
+    )
+
+
+# 港口归一化会往证据里追加"港口主数据：…"说明；它不是文档原文，参与定位只会
+# 派生出发货人公司名里的同类词，因此定位时排除
+MASTER_DATA_QUOTE_MARKER = "主数据"
+
+
+def _document_quotes(meta: FieldMetadata) -> list[str]:
+    """只取文档原文类证据引用（排除主数据说明等合成片段）。"""
+
+    return [
+        item.quote
+        for item in meta.evidence
+        if item.quote and MASTER_DATA_QUOTE_MARKER not in item.quote
+    ]
+
 
 class AnalysisService(WorkflowEventPublisher):
     """协调单份文档分析和本地结果持久化。"""
@@ -629,6 +733,13 @@ class AnalysisService(WorkflowEventPublisher):
             task_id=task_id,
         )
 
+        # 把字段值映射回源 PDF 坐标（供前端原件预览高亮），失败不影响结果产出
+        await self._locate_field_locations(
+            field_meta,
+            task_id,
+            state.get("source_name") or "",
+        )
+
         ordered_field_meta = {
             key: field_meta[key] for key in PO_ORDER_KEYS if key in field_meta
         }
@@ -785,6 +896,136 @@ class AnalysisService(WorkflowEventPublisher):
                             "proposed_code": outcome.three_code,
                         },
                     )
+
+    async def _locate_field_locations(
+        self,
+        field_meta: dict[str, FieldMetadata],
+        task_id: str,
+        source_name: str,
+    ) -> None:
+        """把字段值与证据引文映射回源 PDF 坐标，写入 field_meta[*].locations。
+
+        定位失败（没有 PDF、扫描件无文本层、匹配不上）时保持空列表，由前端按
+        "未定位"展示；任何异常只记日志，绝不影响结果产出。
+        """
+
+        targets = [
+            key
+            for key, meta in field_meta.items()
+            if key not in CONTEXT_ONLY_KEYS and meta.value not in (None, "", {})
+        ]
+        if not targets:
+            return
+        try:
+            status = self.get_task_status(task_id)
+        except FileNotFoundError:
+            return
+        pdf_path = resolve_source_pdf(
+            self.file_store.root,
+            task_id,
+            status.get("uploaded_path"),
+            self.file_store.source_stem(source_name),
+        )
+        if pdf_path is None:
+            logger.info("任务没有可定位的源 PDF，跳过字段定位：%s", task_id)
+            return
+        try:
+            located = await asyncio.to_thread(
+                self._locate_in_document, pdf_path, field_meta, targets
+            )
+        except Exception:
+            logger.exception("字段坐标定位失败，结果保持未定位：%s", task_id)
+            return
+        for key, items in located.items():
+            meta = field_meta.get(key)
+            if meta is None or not items:
+                continue
+            field_meta[key] = meta.model_copy(update={"locations": items})
+
+    @staticmethod
+    def _locate_in_document(
+        pdf_path: Path,
+        field_meta: dict[str, FieldMetadata],
+        targets: list[str],
+    ) -> dict[str, list[EvidenceLocation]]:
+        """在 PDF 文本层中为每个字段找出值的位置（同步实现，由调用方放入线程）。"""
+
+        index = DocumentTextIndex(pdf_path)
+        if not index.has_text_layer:
+            return {}
+        located: dict[str, list[EvidenceLocation]] = {}
+        for key in targets:
+            meta = field_meta[key]
+            quotes = _document_quotes(meta)
+            quote_boxes = _collect_boxes(index, quotes)
+            # 整条引用匹配不上（标签与值跨文本块、同行其它栏打断阅读顺序）时，
+            # 用它的词元当区域锚点，把值的多个命中收窄到正确那一处；
+            # 与值本身相同的词元要排除，否则等于拿值给自己当锚点，失去收窄意义
+            values = (
+                [str(item) for item in meta.value.values() if item]
+                if isinstance(meta.value, dict)
+                else [str(meta.value)]
+            )
+            value_keys = {normalize_needle(item) for item in values}
+            anchor_boxes = [
+                *quote_boxes,
+                *_collect_boxes(
+                    index,
+                    [item for item in quote_segments(quotes) if item not in value_keys],
+                ),
+            ]
+            items: list[EvidenceLocation] = []
+            if isinstance(meta.value, dict):
+                # 参与人字段（发货人/收货人）整体定位：四个子项在同一块区域，
+                # 逐项先取精确框；没匹配上的子项沿用整块区域框，避免出现
+                # "名称定位到了、地址却未定位"这种同块内自相矛盾的状态。
+                # 空值子项不产出定位（前端也不会有标记）。
+                sub_boxes: dict[str, LocatedBox] = {}
+                for sub_key in PARTY_KEYS:
+                    sub_value = meta.value.get(sub_key)
+                    if not sub_value:
+                        continue
+                    box = _pick_box(
+                        index, _value_needles(str(sub_value), quotes), anchor_boxes
+                    )
+                    if box is not None:
+                        sub_boxes[sub_key] = box
+                region_box = _union_boxes(
+                    [*sub_boxes.values(), *quote_boxes]
+                )
+                for sub_key in PARTY_KEYS:
+                    if not meta.value.get(sub_key):
+                        continue
+                    box = sub_boxes.get(sub_key) or region_box
+                    if box is None:
+                        continue
+                    items.append(
+                        EvidenceLocation(
+                            target=f"{key}.{sub_key}",
+                            page=box.page,
+                            bbox=list(box.bbox),
+                        )
+                    )
+            else:
+                box = _pick_box(
+                    index, _value_needles(str(meta.value), quotes), anchor_boxes
+                )
+                if box is not None:
+                    items.append(
+                        EvidenceLocation(target=key, page=box.page, bbox=list(box.bbox))
+                    )
+            if items:
+                located[key] = items
+            elif quote_boxes:
+                # 值本身定位不到（被改写/换行异常）时，退化为引用片段的位置
+                located[key] = [
+                    EvidenceLocation(
+                        target=key,
+                        page=quote_boxes[0].page,
+                        bbox=list(quote_boxes[0].bbox),
+                    )
+                ]
+        return located
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:
         """加载页面图片：第一页给整页图 + 四象限切分图，保证小字号文本可辨认。"""

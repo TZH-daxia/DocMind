@@ -8,11 +8,12 @@ export const FieldFormPanel = {
     form: { type: Object, required: true },
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
+    locations: { type: Object, default: () => ({}) },
     errors: { type: Object, default: () => ({}) },
     submitting: { type: Boolean, default: false },
     disabled: { type: Boolean, default: false },
   },
-  emits: ["submit", "collapse"],
+  emits: ["submit", "collapse", "field-focus"],
   template: `
     <section class="doc-dialog-form" :class="{ 'is-disabled': disabled }">
       <header class="doc-dialog-form-head">
@@ -47,7 +48,9 @@ export const FieldFormPanel = {
               :form="form"
               :original="original"
               :raw-values="rawValues"
+              :locations="locations"
               :error="errors[row.id]"
+              @field-focus="$emit('field-focus', $event)"
             />
           </tbody>
         </table>

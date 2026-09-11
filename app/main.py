@@ -1,10 +1,10 @@
 import asyncio
 import logging
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -89,6 +89,25 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 app.include_router(analysis_router, prefix=settings.api_prefix)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.middleware("http")
+async def revalidate_static_assets(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """静态资源每次回源校验，避免前端改动"看起来没生效"。
+
+    HTML 里只给入口脚本带了版本号，ES 模块之间互相 import 的路径
+    （./fields.js、./components/*.js 等）不带版本号；若允许浏览器直接复用
+    启发式缓存，那些子模块会长期停留在首次加载的旧版本。这里统一要求
+    回源校验：内容未变仍是 304，不额外消耗带宽。
+    """
+
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/", include_in_schema=False)
