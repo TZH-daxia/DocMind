@@ -93,9 +93,16 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/", include_in_schema=False)
 async def frontend_index() -> FileResponse:
-    """返回文档分析前端页面。"""
+    """返回文档分析前端页面。
 
-    return FileResponse("app/static/index.html")
+    HTML 必须每次回源校验（no-cache）：页面里带着带版本号的静态资源引用，
+    一旦 HTML 被浏览器启发式缓存，新版本号就不会生效，用户会一直看到旧前端。
+    """
+
+    return FileResponse(
+        "app/static/index.html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/health", tags=["system"])
