@@ -27,6 +27,10 @@ const analysisApi = {
     return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/result`);
   },
 
+  async getTask(taskId) {
+    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}`);
+  },
+
   subscribe(taskId, onMessage, onError) {
     const source = new EventSource(
       `${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/events`,

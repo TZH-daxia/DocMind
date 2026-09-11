@@ -9,6 +9,7 @@ export const FieldFormPanel = {
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
     locations: { type: Object, default: () => ({}) },
+    portCandidates: { type: Object, default: () => ({}) },
     errors: { type: Object, default: () => ({}) },
     submitting: { type: Boolean, default: false },
     disabled: { type: Boolean, default: false },
@@ -32,7 +33,7 @@ export const FieldFormPanel = {
             type="button"
             :disabled="submitting || disabled"
             @click="$emit('submit')"
-          >提交</button>
+          ><span v-if="submitting" class="doc-dialog-spinner" aria-hidden="true"></span>{{ submitting ? "校验中…" : "提交" }}</button>
         </div>
       </header>
       <div class="doc-dialog-table-wrap">
@@ -49,6 +50,7 @@ export const FieldFormPanel = {
               :original="original"
               :raw-values="rawValues"
               :locations="locations"
+              :port-candidates="portCandidates"
               :error="errors[row.id]"
               @field-focus="$emit('field-focus', $event)"
             />

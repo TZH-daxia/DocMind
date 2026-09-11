@@ -10,6 +10,14 @@ from app.config import Settings
 from app.schemas.po_order import PO_ORDER_KEYS
 from app.service.analysis_service import AnalysisService
 
+# 像托书的内容：用于验证"文件类型没问题、只是抽不出字段"那条路径；
+# 类型判定已提前拦下非托书文件，这里的样本必须带托书特征
+BOOKING_LIKE_CONTENT = (
+    "Shipper: ACME TRADING LTD\nConsignee: BASEL LOGISTICS GMBH\n"
+    "Airport of Departure: SHANGHAI\nAirport of Destination: BASEL\n"
+    "件数 No of Packages: 12\nGross Weight: 320 kg\nCBM: 1.8\n"
+) * 3
+
 
 class StubExtractor:
     """按配置抛出异常或返回空候选的抽取器替身。"""
@@ -48,7 +56,7 @@ async def test_empty_extraction_fails_when_vlm_content_exists(tmp_path: Path) ->
     service.deepseek = StubExtractor(EmptyExtractionError("EMPTY_EXTRACTION"))  # type: ignore[assignment]
 
     with pytest.raises(EmptyExtractionError):
-        await service.extract_candidates(make_state("视觉内容" * 200))
+        await service.extract_candidates(make_state(BOOKING_LIKE_CONTENT))
 
 
 async def test_empty_extraction_kept_when_vlm_content_missing(tmp_path: Path) -> None:

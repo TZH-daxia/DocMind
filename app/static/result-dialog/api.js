@@ -13,8 +13,20 @@ export async function fetchResult(taskId) {
   return request(`${BASE_URL}/tasks/${encodeURIComponent(taskId)}/result`);
 }
 
-async function request(url) {
-  const response = await fetch(url);
+// 提交前校验：港口转三字码 + 委托客户存在性（真实提交由后端后续接入）
+export async function validateSubmission(taskId, payload) {
+  return request(
+    `${BASE_URL}/tasks/${encodeURIComponent(taskId)}/submission/validate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+async function request(url, options = {}) {
+  const response = await fetch(url, options);
   let payload = {};
   try {
     payload = await response.json();

@@ -412,6 +412,57 @@ select:focus {
   flex: 0 0 auto;
 }
 
+/* 失败原因卡片：把"传错文件/抽取失败"等分类原因直接摆在结果面板里 */
+.result-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(197, 90, 75, 0.32);
+  border-radius: 6px;
+  background: var(--red-soft);
+  font-size: 12px;
+}
+
+.result-error[hidden] {
+  display: none;
+}
+
+.result-summary[hidden] {
+  display: none;
+}
+
+.result-error-title {
+  color: var(--red);
+  font-size: 13px;
+}
+
+.result-error-body {
+  margin: 0;
+  color: var(--navy);
+  line-height: 1.6;
+}
+
+.result-error-hint {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* 文件列表上的失败分类小标（如「类型不符」） */
+.file-flag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 10px;
+  font-style: normal;
+}
+
 .prepare-button:not(:disabled) {
   border-color: var(--teal);
   background: var(--teal);
@@ -1164,9 +1215,31 @@ select:focus {
   font-size: 12px;
 }
 
+.doc-dialog-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .doc-dialog-submit:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* 提交前校验进行中的转圈图标 */
+.doc-dialog-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: docDialogSpin 0.8s linear infinite;
+}
+
+@keyframes docDialogSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .doc-dialog-form.is-disabled .doc-dialog-table-wrap {
@@ -1316,6 +1389,58 @@ select:focus {
 
 .doc-dialog-hint {
   color: var(--muted);
+}
+
+/* 港口转三字码未定论时的候选提示：chips 可点选，超出默认 6 个折叠 */
+.doc-dialog-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.doc-dialog-candidates-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.doc-dialog-candidate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 240px;
+  padding: 2px 8px;
+  border: 1px solid var(--teal);
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.doc-dialog-candidate-chip small {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-dialog-candidate-chip:hover {
+  border-color: #0f877d;
+}
+
+.doc-dialog-candidate-more {
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.doc-dialog-candidate-more:hover {
+  color: var(--teal);
 }
 
 .doc-dialog-error {

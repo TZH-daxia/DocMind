@@ -1,6 +1,9 @@
 import { FIELD_STATUS_LABELS } from "../constants.js";
 import { DatePicker } from "./DatePicker.js";
 
+// 候选默认展示数量：超出折叠，可展开全部
+const CANDIDATE_PREVIEW_LIMIT = 6;
+
 export const FieldFormRow = {
   name: "FieldFormRow",
   components: { DatePicker },
@@ -10,14 +13,22 @@ export const FieldFormRow = {
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
     locations: { type: Object, default: () => ({}) },
-    error: { type: Boolean, default: false },
+    portCandidates: { type: Object, default: () => ({}) },
+    error: { type: [Boolean, String], default: false },
   },
   emits: ["field-focus"],
   data() {
     return {
       pickerOpen: false,
       pickerAnchor: null,
+      candidatesExpanded: false,
     };
+  },
+  watch: {
+    // 候选变化（切换任务/重新校验）时收起展开状态
+    candidates() {
+      this.candidatesExpanded = false;
+    },
   },
   methods: {
     onDateClick() {
@@ -38,6 +49,10 @@ export const FieldFormRow = {
     onSelectDate(iso) {
       this.target = iso;
       this.pickerOpen = false;
+    },
+    selectCandidate(item) {
+      // 点选候选 = 人工填入三字码：走"已修改"流程，候选随值非空自动消失
+      this.target = item.three_code;
     },
     sanitizeNumber(value) {
       const digits = String(value).replace(/[^\d.]/g, "");
@@ -110,6 +125,29 @@ export const FieldFormRow = {
         // 空值行没有可核对的原文内容：不高亮、也不做区域回退
         hasValue: this.hasExtractedValue,
       };
+    },
+    candidates() {
+      // 只有"没有值"的行才展示候选：归一化成功的字段已直接填入三字码
+      if (!this.row.locationKey || String(this.target ?? "").trim()) {
+        return [];
+      }
+      return this.portCandidates[this.row.fieldKey] || [];
+    },
+    // 模板无法访问模块常量，经 computed 暴露
+    candidatePreviewLimit() {
+      return CANDIDATE_PREVIEW_LIMIT;
+    },
+    visibleCandidates() {
+      return this.candidatesExpanded
+        ? this.candidates
+        : this.candidates.slice(0, CANDIDATE_PREVIEW_LIMIT);
+    },
+    hiddenCandidatesCount() {
+      return Math.max(0, this.candidates.length - CANDIDATE_PREVIEW_LIMIT);
+    },
+    errorText() {
+      // 提交前校验的失败原因（后端逐字段下发），行内展示
+      return typeof this.error === "string" ? this.error : "";
     },
     hasExtractedValue() {
       // 用"抽取出来的原值"判断，而不是当前输入框内容：人工补录的值本来
@@ -201,6 +239,30 @@ export const FieldFormRow = {
           @focus="onFieldFocus"
         >
         <small v-if="rawHint" class="doc-dialog-hint">{{ rawHint }}</small>
+        <div v-if="candidates.length" class="doc-dialog-candidates">
+          <span class="doc-dialog-candidates-label">候选({{ candidates.length }})</span>
+          <button
+            v-for="item in visibleCandidates"
+            :key="item.three_code"
+            class="doc-dialog-candidate-chip"
+            type="button"
+            :title="item.english_name || item.three_code"
+            @click="selectCandidate(item)"
+          >{{ item.three_code }}<small v-if="item.english_name">{{ item.english_name }}</small></button>
+          <button
+            v-if="hiddenCandidatesCount > 0"
+            class="doc-dialog-candidate-more"
+            type="button"
+            @click="candidatesExpanded = true"
+          >展开其余 {{ hiddenCandidatesCount }} 个</button>
+          <button
+            v-else-if="candidates.length > candidatePreviewLimit"
+            class="doc-dialog-candidate-more"
+            type="button"
+            @click="candidatesExpanded = false"
+          >收起</button>
+        </div>
+        <small v-if="errorText" class="doc-dialog-error">{{ errorText }}</small>
         <DatePicker
           v-if="pickerOpen"
           :value="target"

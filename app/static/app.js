@@ -27,9 +27,34 @@ const elements = {
   eventList: document.querySelector("#eventList"),
   resultSummary: document.querySelector("#resultSummary"),
   resultJson: document.querySelector("#resultJson"),
+  resultError: document.querySelector("#resultError"),
   copyButton: document.querySelector("#copyButton"),
   prepareButton: document.querySelector("#prepareButton"),
   toast: document.querySelector("#toast"),
+};
+
+// 失败原因分类：标题与列表短标按后端下发的错误码映射，正文直接用 error.message
+const ERROR_TITLES = {
+  DOCUMENT_TYPE_MISMATCH: "不是空运托书文件",
+  EMPTY_EXTRACTION: "未识别到托书内容",
+  VLM_VISION_UNAVAILABLE: "图片识别失败",
+  TASK_INTERRUPTED: "任务被中断",
+  ANALYSIS_FAILED: "分析失败",
+};
+const ERROR_SHORT_LABELS = {
+  DOCUMENT_TYPE_MISMATCH: "非托书文件",
+  EMPTY_EXTRACTION: "未识别内容",
+  VLM_VISION_UNAVAILABLE: "识别失败",
+  TASK_INTERRUPTED: "已中断",
+  ANALYSIS_FAILED: "分析失败",
+};
+// 已知错误码的固定正文（优先于后端 message）：历史任务的 error 里存的可能还是
+// 技术文案，这里覆盖掉，保证界面上永远是面向用户的说法
+const ERROR_BODIES = {
+  DOCUMENT_TYPE_MISMATCH:
+    "该文件不像空运托书：未识别到托运人、起讫港、件数等关键内容，请重新上传空运托书/托单（Booking）文件",
+  EMPTY_EXTRACTION:
+    "没有从文件中识别出任何托书字段，请确认上传的是空运托书/托单（Booking）文件后重新上传",
 };
 const nodeRows = new Map();
 const displayedStates = new Map();
@@ -127,8 +152,11 @@ async function selectTask(taskId) {
   elements.selectedTaskId.textContent = item.task_id;
   initEventList();
   renderEvents(state.events.get(taskId) || [], false);
-  renderStatus(item.status, item.progress, item.current_stage);
-  renderResult(null, item.status);
+  renderStatus(item.status, item.progress, item.current_stage, item.error_code);
+  renderResult(null, item.status, failedError(item));
+  if (item.status === "failed") {
+    await loadTaskError(taskId);
+  }
   if (item.result_available) {
     try {
       const result = await analysisApi.getResult(taskId);
@@ -167,10 +195,13 @@ function handleTaskMessage(message) {
   }
   if (message.kind === "status") {
     flushEvents();
-    renderStatus(message.status, message.progress, message.current_stage);
+    renderStatus(message.status, message.progress, message.current_stage, message.error?.code);
     if (["ready", "needs_review", "failed"].includes(message.status)) {
       stopEvents();
       const finalStatus = message.status;
+      if (finalStatus === "failed") {
+        renderResult(null, "failed", message.error || null);
+      }
       setTimeout(() => {
         loadFiles();
         if (finalStatus !== "failed") {
@@ -233,6 +264,11 @@ function renderFileList() {
           <span class="file-copy">
             <strong>${escapeHtml(item.original_name)}</strong>
             <small>${escapeHtml(item.current_stage || "等待运行")}</small>
+            ${
+              item.status === "failed" && ERROR_SHORT_LABELS[item.error_code]
+                ? `<em class="file-flag">${escapeHtml(ERROR_SHORT_LABELS[item.error_code])}</em>`
+                : ""
+            }
           </span>
           <span class="status-dot ${statusClass(item.status)}"></span>
         </button>`;
@@ -242,10 +278,12 @@ function renderFileList() {
     button.addEventListener("click", () => selectTask(button.dataset.taskId));
   });
 }
-function renderStatus(status, progress, label) {
+function renderStatus(status, progress, label, errorCode) {
   if (status) {
-    elements.selectedStatus.textContent = statusText(status);
+    const text = statusText(status, errorCode);
+    elements.selectedStatus.textContent = text;
     elements.selectedStatus.className = `status-pill ${statusClass(status)}`;
+    elements.selectedStatus.title = text;
   }
   const safeProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, safeProgress))}%`;
@@ -334,15 +372,19 @@ function renderEvents(taskEvents, animate = false) {
     displayedStates.set(item.key, item.state);
   });
 }
-function renderResult(result, status) {
+function renderResult(result, status, error) {
   // 「准备提交」仅在任务完成且有结果时点亮，运行中/失败/未选任务一律置灰
   elements.prepareButton.disabled = !isResultReady(result, status);
+  renderResultError(status, error);
   if (!result) {
-    elements.resultSummary.innerHTML = "<span>暂无结果</span>";
+    // 不再显示"暂无结果"占位：失败原因由错误卡片说明，运行中由进度区说明
+    elements.resultSummary.hidden = true;
+    elements.resultSummary.innerHTML = "";
     elements.resultJson.innerHTML = "<code>{}</code>";
     elements.copyButton.disabled = true;
     return;
   }
+  elements.resultSummary.hidden = false;
   const reviewStatuses = ["needs_review", "conflict", "missing", "invalid"];
   const reviewFields = Array.isArray(result.review_fields)
     ? result.review_fields
@@ -357,6 +399,38 @@ function renderResult(result, status) {
     : "";
   elements.resultJson.innerHTML = `<code>${escapeHtml(JSON.stringify(result.result || {}, null, 2))}</code>${reviewNote}`;
   elements.copyButton.disabled = false;
+}
+function failedError(item) {
+  if (!item || item.status !== "failed" || !item.error_code) return null;
+  return { code: item.error_code, message: item.error_message || "" };
+}
+function renderResultError(status, error) {
+  const code = status === "failed" ? error?.code : null;
+  if (!code) {
+    elements.resultError.hidden = true;
+    elements.resultError.innerHTML = "";
+    return;
+  }
+  const title = ERROR_TITLES[code] || "分析失败";
+  const body = ERROR_BODIES[code] || error.message || title;
+  const hint = error.hint
+    ? `<p class="result-error-hint">识别到的内容：${escapeHtml(error.hint)}</p>`
+    : "";
+  elements.resultError.innerHTML = `
+    <strong class="result-error-title">${escapeHtml(title)}</strong>
+    <p class="result-error-body">${escapeHtml(body)}</p>
+    ${hint}`;
+  elements.resultError.hidden = false;
+}
+async function loadTaskError(taskId) {
+  try {
+    const detail = await analysisApi.getTask(taskId);
+    if (state.selectedTaskId !== taskId || !detail.error?.code) return;
+    renderStatus(detail.status, detail.progress, detail.current_stage, detail.error.code);
+    renderResult(null, detail.status, detail.error);
+  } catch (error) {
+    // 详情拿不到时保留列表项里的兜底信息，不打扰用户
+  }
 }
 async function copyResult() {
   const content = elements.resultJson.textContent;
@@ -383,7 +457,10 @@ function stopEvents() {
     state.eventSource = null;
   }
 }
-function statusText(status) {
+function statusText(status, errorCode) {
+  if (status === "failed" && errorCode && ERROR_TITLES[errorCode]) {
+    return ERROR_TITLES[errorCode];
+  }
   return {
     queued: "待运行",
     running: "运行中",

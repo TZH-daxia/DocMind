@@ -6,7 +6,7 @@ from pathlib import Path
 from app.config import Settings
 from app.schemas.analysis import Evidence, FieldMetadata
 from app.schemas.po_order import PORT_FIELD_KEYS
-from app.schemas.port import PortNormalizationOutcome
+from app.schemas.port import PortCandidate, PortNormalizationOutcome
 from app.service.analysis_service import AnalysisService
 
 
@@ -68,6 +68,8 @@ async def test_normalized_outcome_updates_result(tmp_path: Path) -> None:
     assert result["sfg"] == "PVG"
     assert field_meta["sfg"].status == "normalized"
     assert field_meta["sfg"].value == "PVG"
+    # 归一化成功：三字码直接填入表单，原文同样保留下来供核对
+    assert field_meta["sfg"].raw_value == "SHANGHAI PUDONG"
     assert any("PVG" in (item.quote or "") for item in field_meta["sfg"].evidence)
     assert review_fields == set()
 
@@ -86,27 +88,79 @@ async def test_failed_outcome_downgrades_to_needs_review(tmp_path: Path) -> None
     result: dict = {"sfg": "Schweinfurt, Germany"}
     review_fields: set[str] = set()
     await service._normalize_port_fields(result, field_meta, review_fields)
-    # 保留原值，降级为待人工审核
-    assert result["sfg"] == "Schweinfurt, Germany"
+    # 置空并降级为待人工审核，原文保留在 raw_value
+    assert result["sfg"] is None
+    assert field_meta["sfg"].raw_value == "Schweinfurt, Germany"
     assert field_meta["sfg"].status == "needs_review"
     assert "sfg" in review_fields
 
 
-async def test_skipped_outcome_downgrades_to_needs_review(tmp_path: Path) -> None:
+async def test_ambiguous_outcome_keeps_candidates_for_review(tmp_path: Path) -> None:
+    """多义字段转人工审核时，候选要带进事件，人能看到可选值。"""
+
     service = make_service(tmp_path)
+    task_id = "ambiguous-port"
     outcome = PortNormalizationOutcome(
         field_key="sfg",
-        status="skipped",
+        status="ambiguous",
         raw_value="SHANGHAI",
-        reason="no_unique_code",
+        candidates=[
+            PortCandidate(three_code="PVG", english_name="SHANGHAIPUDONG", country_code="CN"),
+            PortCandidate(three_code="SHA", english_name="SHANGHAIHONGQIAO", country_code="CN"),
+        ],
+        reason="主数据匹配到 2 个候选，原文未限定具体机场/港口",
     )
     stub = StubPortService({"sfg": outcome})
     service.port_service = stub  # type: ignore[assignment]
     field_meta = {"sfg": make_meta("SHANGHAI", "confirmed")}
     result: dict = {"sfg": "SHANGHAI"}
     review_fields: set[str] = set()
+
+    await service._normalize_port_fields(result, field_meta, review_fields, task_id=task_id)
+
+    # 表单置空（接口要求三字码），原文与候选留在元数据里供前端展示
+    assert result["sfg"] is None
+    assert field_meta["sfg"].value is None
+    assert field_meta["sfg"].raw_value == "SHANGHAI"
+    assert {item.three_code for item in field_meta["sfg"].candidates} == {"PVG", "SHA"}
+    assert field_meta["sfg"].status == "needs_review"
+    assert review_fields == {"sfg"}
+    events = [
+        json.loads(line)
+        for line in service.file_store.read_text(
+            service.file_store.process_log_path(task_id)
+        ).splitlines()
+    ]
+    review_event = next(
+        event for event in events if event["event_type"] == "port_review_required"
+    )
+    assert review_event["details"]["status"] == "ambiguous"
+    assert {item["three_code"] for item in review_event["details"]["candidates"]} == {
+        "PVG",
+        "SHA",
+    }
+
+
+async def test_not_a_port_outcome_downgrades_to_review(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    outcome = PortNormalizationOutcome(
+        field_key="sfg",
+        status="not_a_port",
+        raw_value="GERMANY",
+        reason="不是港口或机场（国家/地区、费用条款或表头词）",
+    )
+    stub = StubPortService({"sfg": outcome})
+    service.port_service = stub  # type: ignore[assignment]
+    field_meta = {"sfg": make_meta("GERMANY", "confirmed")}
+    result: dict = {"sfg": "GERMANY"}
+    review_fields: set[str] = set()
+
     await service._normalize_port_fields(result, field_meta, review_fields)
-    assert result["sfg"] == "SHANGHAI"
+
+    # 非港口：同样置空，但没有候选可展示
+    assert result["sfg"] is None
+    assert field_meta["sfg"].raw_value == "GERMANY"
+    assert field_meta["sfg"].candidates == []
     assert field_meta["sfg"].status == "needs_review"
     assert review_fields == {"sfg"}
 

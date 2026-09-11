@@ -14,6 +14,12 @@ from app.schemas.analysis import FieldCandidate
 from app.service.analysis_service import AnalysisService
 from app.storage.file_store import FileStore
 
+# 带托书特征的视觉内容：否则会被文档类型守卫提前拦下，测不到抽取闸门
+BOOKING_LIKE_CONTENT = (
+    "Shipper: ACME TRADING LTD\nAirport of Departure: SHANGHAI\n"
+    "Consignee: BASEL LOGISTICS GMBH\n件数 No of Packages: 12\n"
+) * 3
+
 
 def make_service(tmp_path: Path, **settings_kwargs: Any) -> AnalysisService:
     settings = Settings(
@@ -164,7 +170,7 @@ async def test_model_gate_shared_with_extraction(tmp_path: Path) -> None:
                 "source_name": f"a{index}.doc",
                 "schema_version": "po_order.v1",
                 "context": {},
-                "vlm_image_content": "视觉内容" * 100,
+                "vlm_image_content": BOOKING_LIKE_CONTENT,
             }
         )
     await asyncio.gather(*(service.extract_candidates(item) for item in states))

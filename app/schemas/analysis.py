@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.port import PortCandidate
+
 
 class AnalysisContext(BaseModel):
     """由调用方提供的订单页面上下文。"""
@@ -111,12 +113,29 @@ class FieldMetadata(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
     # 定位不到时为空列表，前端按"未定位"展示，不画框
     locations: list[EvidenceLocation] = Field(default_factory=list)
+    # 归一化前的原始抽取值：港口字段转三字码失败时 value 置空，原文留在这里，
+    # 供前端提示、坐标定位与人工核对使用
+    raw_value: Any = None
+    # 港口归一化未定论时的候选（来自主数据）：前端在空字段下方展示供人工选择
+    candidates: list[PortCandidate] = Field(default_factory=list)
 
 
 class ValidationResult(BaseModel):
     """完整订单 JSON 的校验结果。"""
 
     is_valid: bool
+
+
+class SubmissionValidationRequest(BaseModel):
+    """提交前校验的请求：委托客户与始发港/目的港的当前表单值。
+
+    输入不限制形式（中文 / 英文 / 三字码 / 客户 ID），由后端统一转换为
+    提交接口需要的形态（sfg/mdg 必须是三字码、fid 必须是存在的客户 ID）。
+    """
+
+    fid: str | None = None
+    sfg: str | None = None
+    mdg: str | None = None
 
 
 class AnalysisResult(BaseModel):

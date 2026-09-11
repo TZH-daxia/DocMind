@@ -32,21 +32,50 @@ export const ResultDialog = {
     onFieldFocus(payload) {
       resultDialog.focusField(payload);
     },
-    onSubmit() {
+    async onSubmit() {
       const outcome = resultDialog.submit();
-      if (outcome.ok) {
-        notify("提交成功", "success");
+      if (!outcome.ok) {
+        const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
+        notify(
+          missing.length > 3
+            ? `共 ${missing.length} 项必填字段缺失，请补充后再提交`
+            : `请先填写：${missing.map((key) => FIELD_LABELS[key]).join("、")}`,
+          "error",
+        );
+        this.focusRow(outcome.firstError);
         return;
       }
-      const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
-      notify(
-        missing.length > 3
-          ? `共 ${missing.length} 项必填字段缺失，请补充后再提交`
-          : `请先填写：${missing.map((key) => FIELD_LABELS[key]).join("、")}`,
-        "error",
-      );
+      // 本地必填通过后做提交前校验：港口转三字码 + 委托客户存在性
+      // （真实提交由后端后续接入，这里只做到校验）
+      dialogState.submitting = true;
+      try {
+        const result = await resultDialog.validateBeforeSubmit();
+        if (!result.ok) {
+          const firstFailed = Object.keys(result.fields || {}).find(
+            (key) => !result.fields[key].ok,
+          );
+          const failedNames = Object.entries(result.fields || {})
+            .filter(([, item]) => !item.ok)
+            .map(([key]) => FIELD_LABELS[key] || key);
+          notify(`${failedNames.join("、")}校验未通过，请按提示修正`, "error");
+          this.focusRow(firstFailed);
+          return;
+        }
+        notify("校验通过", "success");
+        // 校验成功：收起弹窗（真实提交由后端后续接入）
+        resultDialog.close();
+      } catch (error) {
+        notify(`提交前校验失败：${error.message}`, "error");
+      } finally {
+        dialogState.submitting = false;
+      }
+    },
+    focusRow(fieldKey) {
+      if (!fieldKey) {
+        return;
+      }
       this.$nextTick(() => {
-        const row = document.getElementById(`doc-dialog-row-${outcome.firstError}`);
+        const row = document.getElementById(`doc-dialog-row-${fieldKey}`);
         if (!row) {
           return;
         }
@@ -80,6 +109,7 @@ export const ResultDialog = {
             :original="state.original"
             :raw-values="state.rawValues"
             :locations="state.locations"
+            :port-candidates="state.portCandidates"
             :errors="state.errors"
             :submitting="state.submitting"
             :disabled="formDisabled"

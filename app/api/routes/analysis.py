@@ -13,7 +13,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.dependencies import get_analysis_service
-from app.schemas.analysis import AnalysisContext
+from app.schemas.analysis import AnalysisContext, SubmissionValidationRequest
 from app.schemas.file import UploadedDocument
 from app.service.analysis_service import AnalysisService
 
@@ -121,6 +121,17 @@ async def get_analysis_result(
         return service.get_result(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="RESULT_NOT_FOUND") from exc
+
+
+@router.post("/tasks/{task_id}/submission/validate")
+async def validate_analysis_submission(
+    task_id: str,
+    request: SubmissionValidationRequest,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """提交前校验：始发港/目的港转三字码 + 委托客户存在性（不发起真实提交）。"""
+
+    return await service.validate_submission(task_id, request)
 
 
 @router.get("/tasks/{task_id}/pages/{page_no}")

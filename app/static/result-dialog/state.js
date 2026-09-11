@@ -14,6 +14,8 @@ export const dialogState = reactive({
   rawValues: {},
   // 后端定位结果：target（字段 key 或 key.subkey）-> [{page, bbox}]
   locations: {},
+  // 港口归一化未定论时的候选：field key -> [{three_code, english_name, country_code}]
+  portCandidates: {},
   focusedLocationKey: "",
   highlightBoxes: [],
   highlightStatus: "",
@@ -33,6 +35,7 @@ export function resetDialogContent() {
   dialogState.original = {};
   dialogState.rawValues = {};
   dialogState.locations = {};
+  dialogState.portCandidates = {};
   dialogState.focusedLocationKey = "";
   dialogState.highlightBoxes = [];
   dialogState.highlightStatus = "";

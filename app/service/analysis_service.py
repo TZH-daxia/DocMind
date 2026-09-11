@@ -13,6 +13,12 @@ from app.agent.deepseek_extractor import (
     ImageInput,
 )
 from app.collector.document_renderer import LocalDocumentRenderer
+from app.collector.document_type_guard import (
+    MISMATCH_MESSAGE,
+    DocumentTypeMismatchError,
+    build_content_hint,
+    detect_document_type,
+)
 from app.collector.evidence_locator import (
     DocumentTextIndex,
     LocatedBox,
@@ -33,6 +39,7 @@ from app.schemas.analysis import (
     EvidenceLocation,
     FieldCandidate,
     FieldMetadata,
+    SubmissionValidationRequest,
     ValidationResult,
 )
 from app.schemas.file import UploadedDocument
@@ -42,6 +49,7 @@ from app.schemas.po_order import (
     PO_ORDER_KEYS,
     PORT_FIELD_KEYS,
 )
+from app.service.customer_service import CustomerService
 from app.service.port_normalization_service import PortNormalizationService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.storage.file_store import FileStore
@@ -69,6 +77,36 @@ VLM_MIN_CONTENT_CHARS = 200
 VLM_MAX_ATTEMPTS = 3
 # VLM 拒答重试前的退避基数（第 n 次重试等待 n × 基数秒）
 VLM_RETRY_BACKOFF_SECONDS = 2.0
+# 失败事件文案：让事件时间线也能说清原因，未列举的错误码用兜底文案
+FAILURE_EVENT_MESSAGES: dict[str, str] = {
+    "DOCUMENT_TYPE_MISMATCH": "文件不像空运托书，已停止字段抽取",
+    "EMPTY_EXTRACTION": "未能从文件中抽取到任何托书字段",
+}
+# 面向用户的失败说明：技术细节（异常原文）改放 error.detail，前端只展示这条
+FAILURE_USER_MESSAGES: dict[str, str] = {
+    "EMPTY_EXTRACTION": (
+        "没有从文件中识别出任何托书字段，请确认上传的是空运托书/托单（Booking）"
+        "文件后重新上传"
+    ),
+}
+# 港口归一化未能定论时的事件文案（按归一化服务给出的状态区分）
+PORT_REVIEW_MESSAGES: dict[str, str] = {
+    "ambiguous": "港口原文对应多个候选，无法唯一确定三字码",
+    "not_a_port": "港口字段内容不是地名，未做三字码归一化",
+    "failed": "港口字段无法确定三字码",
+}
+# 提交前校验的失败文案（按归一化/客户校验返回的状态码）
+PORT_VALIDATION_MESSAGES: dict[str, str] = {
+    "ambiguous": "该港口对应多个三字码，请按候选选择",
+    "not_a_port": "不是具体的港口或机场（国家、地区或费用词），请输入具体港口名或三字码",
+    "failed": "无法确定为三字码，请核对后重试",
+}
+CUSTOMER_VALIDATION_MESSAGES: dict[str, str] = {
+    "ambiguous": "该名称对应多个客户，请补充完整名称",
+    "not_found": "客户不存在，请核对委托客户",
+    "unavailable": "客户已停用或不参与新业务，请确认",
+    "skipped": "未配置客户主数据接口，无法校验委托客户",
+}
 
 def _collect_boxes(index: DocumentTextIndex, needles: list[str]) -> list[LocatedBox]:
     """收集一组检索词的全部命中位置（用于"引用框"范围判定）。"""
@@ -175,6 +213,7 @@ class AnalysisService(WorkflowEventPublisher):
         # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
         self.port_service = PortNormalizationService(settings, self.file_store)
+        self.customer_service = CustomerService(settings, self.file_store)
         # 并发闸门按名字惰性创建：信号量必须在事件循环内构造，而服务是进程级
         # 单例（启动阶段与首次请求都会取用），因此延迟到真正执行任务时创建
         self._gates: dict[str, asyncio.Semaphore] = {}
@@ -268,6 +307,8 @@ class AnalysisService(WorkflowEventPublisher):
                 continue
             task_id = str(status.get("task_id") or status_path.parent.name)
             result_path = self.file_store.result_path(task_id)
+            error = status.get("error")
+            error = error if isinstance(error, dict) else {}
             tasks.append(
                 {
                     "task_id": task_id,
@@ -279,6 +320,9 @@ class AnalysisService(WorkflowEventPublisher):
                     "created_at": status.get("created_at"),
                     "updated_at": status.get("updated_at"),
                     "result_available": result_path.exists(),
+                    # 失败原因随列表下发：历史失败任务（没有 SSE）也能显示准确提示
+                    "error_code": error.get("code"),
+                    "error_message": error.get("message"),
                     "uploaded_path": status.get("uploaded_path"),
                     "result_path": (
                         self.file_store.relative_path(result_path)
@@ -421,6 +465,10 @@ class AnalysisService(WorkflowEventPublisher):
         )
         try:
             await workflow.ainvoke(state)
+        except DocumentTypeMismatchError as exc:
+            # 传错文件：不是抽取问题，单独错误码，前端据此给"文件类型不符"提示
+            logger.warning("Analysis task document mismatch: %s（%s）", task_id, exc)
+            self._fail_task(task_id, exc, "DOCUMENT_TYPE_MISMATCH", hint=exc.hint)
         except EmptyExtractionError as exc:
             # 模型没抽出任何字段：单独错误码，便于与渲染/网络类失败区分
             logger.error("Analysis task empty extraction: %s（%s）", task_id, exc)
@@ -429,23 +477,47 @@ class AnalysisService(WorkflowEventPublisher):
             logger.exception("Analysis task failed: %s", task_id)
             self._fail_task(task_id, exc, "ANALYSIS_FAILED")
 
-    def _fail_task(self, task_id: str, exc: BaseException, error_code: str) -> None:
-        """把任务标记为失败并写入统一结构的错误信息。"""
+    def _fail_task(
+        self,
+        task_id: str,
+        exc: BaseException,
+        error_code: str,
+        hint: str = "",
+    ) -> None:
+        """把任务标记为失败并写入统一结构的错误信息。
 
+        `error.message` 优先取面向用户的文案（FAILURE_USER_MESSAGES），异常原文
+        改放 `error.detail`，避免把 "EMPTY_EXTRACTION: 模型输出…" 这类技术细节
+        直接展示给用户。
+
+        `hint` 用于"文件类型不符"这类需要告诉用户"识别到了什么"的场景，
+        随 error 一起下发，前端错误卡片直接展示。
+        """
+
+        plain_message = str(exc)
+        message = FAILURE_USER_MESSAGES.get(error_code, plain_message)
+        error: dict[str, Any] = {"code": error_code, "message": message}
+        if hint:
+            error["hint"] = hint
+        if message != plain_message:
+            error["detail"] = plain_message
         self._update_status(
             task_id,
             status="failed",
             progress=100,
             current_stage="failed",
             completed_at=now_iso(),
-            error={"code": error_code, "message": str(exc)},
+            error=error,
         )
+        details: dict[str, Any] = {"error_code": error_code}
+        if hint:
+            details["content_hint"] = hint
         self._append_process_event(
             task_id,
             event_type="task_failed",
-            message="分析任务执行失败",
+            message=FAILURE_EVENT_MESSAGES.get(error_code, "分析任务执行失败"),
             stage="failed",
-            details={"error_code": error_code},
+            details=details,
         )
 
     def publish(self, event: WorkflowEvent) -> None:
@@ -616,6 +688,9 @@ class AnalysisService(WorkflowEventPublisher):
     async def extract_candidates(self, state: AnalysisState) -> list[dict[str, Any]]:
         """仅以 VLM 视觉理解文档为来源抽取字段候选。
 
+        调用模型之前先判定文档类型：内容够长却完全没有托书特征时判定为"传错
+        文件"并直接终止——既省掉一次模型调用，也避免它被归因成抽取异常。
+
         抽取为空时：VLM 内容本身就极短（空白件/未识别出文字）保留空结果交人工
         审核；VLM 内容正常却抽不出字段，判定为抽取失败（EMPTY_EXTRACTION），
         不再伪装成"执行成功但结果全空"。
@@ -623,6 +698,22 @@ class AnalysisService(WorkflowEventPublisher):
 
         task_id = state["task_id"]
         vlm_image_content = state.get("vlm_image_content", "")
+        verdict = detect_document_type(vlm_image_content)
+        if verdict.blocks_extraction:
+            content_hint = build_content_hint(vlm_image_content)
+            logger.warning(
+                "文档内容不像空运托书，停止字段抽取：task_id=%s（识别内容：%s）",
+                task_id,
+                content_hint,
+            )
+            self._append_process_event(
+                task_id,
+                event_type="document_type_mismatch",
+                message="文档内容不像空运托书，已停止字段抽取",
+                stage="extract_candidates",
+                details={"hit_groups": [], "content_hint": content_hint},
+            )
+            raise DocumentTypeMismatchError(MISMATCH_MESSAGE, hint=content_hint)
         async with self._gate("model", self.settings.model_max_concurrent):
             try:
                 model_candidates = await self.deepseek.extract(
@@ -829,11 +920,13 @@ class AnalysisService(WorkflowEventPublisher):
                 continue
             if outcome.status == "normalized" and outcome.assembled:
                 evidence = list(meta.evidence)
+                matched_by = f"，来源：{outcome.matched_by}" if outcome.matched_by else ""
                 evidence.append(
                     Evidence(
                         quote=(
                             f"港口主数据：{outcome.three_code} "
-                            f"{outcome.english_name or ''}（原文：{outcome.raw_value}）"
+                            f"{outcome.english_name or ''}（原文：{outcome.raw_value}"
+                            f"{matched_by}）"
                         ).strip()
                     )
                 )
@@ -843,6 +936,8 @@ class AnalysisService(WorkflowEventPublisher):
                         "value": outcome.assembled,
                         "status": "normalized",
                         "evidence": evidence,
+                        "raw_value": outcome.raw_value,
+                        "candidates": list(outcome.candidates),
                     }
                 )
                 if task_id:
@@ -854,48 +949,146 @@ class AnalysisService(WorkflowEventPublisher):
                         details={
                             "field_key": key,
                             "three_code": outcome.three_code,
+                            "matched_by": outcome.matched_by,
                         },
                     )
-            elif outcome.status == "skipped":
-                logger.info(
-                    "港口原文无法唯一确定三字码（%s：%s），字段降级为待人工审核",
-                    outcome.reason,
-                    outcome.raw_value,
+                continue
+            # ambiguous / not_a_port / failed：一律转人工审核，
+            # 并把候选与原因带进事件，人工核对时能直接看到可选值
+            reason = outcome.reason or outcome.status
+            logger.info(
+                "港口归一化未定论（%s／%s：%s），字段 %s 降级为待人工审核",
+                outcome.status,
+                reason,
+                outcome.raw_value,
+                key,
+            )
+            # 表单留空（提交接口要求三字码），原文与候选留在元数据里：
+            # 前端在空字段下方展示候选供人工直接选用
+            field_meta[key] = meta.model_copy(
+                update={
+                    "value": None,
+                    "status": "needs_review",
+                    "raw_value": outcome.raw_value,
+                    "candidates": list(outcome.candidates),
+                }
+            )
+            result[key] = None
+            review_fields.add(key)
+            if task_id:
+                self._append_process_event(
+                    task_id,
+                    event_type="port_review_required",
+                    message=PORT_REVIEW_MESSAGES.get(
+                        outcome.status, "港口字段无法唯一确定三字码"
+                    ),
+                    stage="build_result",
+                    details={
+                        "field_key": key,
+                        "status": outcome.status,
+                        "reason": reason,
+                        "candidates": [
+                            candidate.model_dump(mode="json")
+                            for candidate in outcome.candidates
+                        ],
+                    },
                 )
-                field_meta[key] = meta.model_copy(update={"status": "needs_review"})
-                review_fields.add(key)
-                if task_id:
-                    self._append_process_event(
-                        task_id,
-                        event_type="port_review_required",
-                        message="港口字段无法唯一确定三字码",
-                        stage="build_result",
-                        details={
-                            "field_key": key,
-                            "reason": outcome.reason,
-                        },
-                    )
+
+    async def validate_submission(
+        self,
+        task_id: str,
+        request: SubmissionValidationRequest,
+    ) -> dict[str, Any]:
+        """提交前校验：始发港/目的港转三字码 + 委托客户存在性。
+
+        真实提交由调用方后续接入；本方法只负责把表单值校验/转换为提交接口
+        需要的形态（sfg/mdg 必为三字码、fid 必为存在的客户 ID），并逐字段
+        给出失败原因与候选，前端据此标出"哪个字段没过"。
+        """
+
+        fields: dict[str, dict[str, Any]] = {}
+        resolved: dict[str, Any] = {}
+
+        port_inputs = {
+            key: str(value).strip()
+            for key, value in (("sfg", request.sfg), ("mdg", request.mdg))
+            if value and str(value).strip()
+        }
+        outcomes = (
+            await self.port_service.normalize(port_inputs) if port_inputs else {}
+        )
+        for key, raw in (("sfg", request.sfg), ("mdg", request.mdg)):
+            text = str(raw or "").strip()
+            if not text:
+                fields[key] = {
+                    "ok": False,
+                    "value": None,
+                    "code": "missing",
+                    "message": "必填项，请填写",
+                    "candidates": [],
+                }
+                continue
+            outcome = outcomes.get(key)
+            if outcome and outcome.status == "normalized" and outcome.assembled:
+                resolved[key] = outcome.assembled
+                fields[key] = {
+                    "ok": True,
+                    "value": outcome.assembled,
+                    "matched_by": outcome.matched_by,
+                    "message": "",
+                    "candidates": [],
+                }
+                continue
+            code = outcome.status if outcome else "port_service_unavailable"
+            fields[key] = {
+                "ok": False,
+                "value": None,
+                "code": code,
+                "message": PORT_VALIDATION_MESSAGES.get(code, "无法确定为三字码"),
+                "candidates": [
+                    candidate.model_dump(mode="json")
+                    for candidate in (outcome.candidates if outcome else [])
+                ],
+            }
+
+        fid_text = str(request.fid or "").strip()
+        if not fid_text:
+            fields["fid"] = {
+                "ok": False,
+                "value": None,
+                "code": "missing",
+                "message": "必填项，请填写",
+                "candidates": [],
+            }
+        else:
+            customer = await self.customer_service.validate(fid_text)
+            if customer.status == "ok" and customer.customer:
+                resolved["fid"] = customer.customer.id
+                fields["fid"] = {
+                    "ok": True,
+                    "value": customer.customer.id,
+                    "matched_by": customer.matched_by,
+                    "message": "",
+                    "candidates": [],
+                }
             else:
-                logger.info(
-                    "港口归一化未通过（%s：%s），字段 %s 降级为待人工审核",
-                    outcome.reason,
-                    outcome.raw_value,
-                    key,
-                )
-                field_meta[key] = meta.model_copy(update={"status": "needs_review"})
-                review_fields.add(key)
-                if task_id:
-                    self._append_process_event(
-                        task_id,
-                        event_type="port_review_required",
-                        message="港口字段三字码校验未通过",
-                        stage="build_result",
-                        details={
-                            "field_key": key,
-                            "reason": outcome.reason,
-                            "proposed_code": outcome.three_code,
-                        },
-                    )
+                fields["fid"] = {
+                    "ok": False,
+                    "value": None,
+                    "code": customer.status,
+                    "message": CUSTOMER_VALIDATION_MESSAGES.get(
+                        customer.status, "客户校验未通过"
+                    ),
+                    "candidates": [
+                        item.model_dump(mode="json") for item in customer.candidates
+                    ],
+                }
+
+        return {
+            "ok": all(item["ok"] for item in fields.values()),
+            "resolved": resolved,
+            "fields": fields,
+        }
 
     async def _locate_field_locations(
         self,
@@ -912,7 +1105,12 @@ class AnalysisService(WorkflowEventPublisher):
         targets = [
             key
             for key, meta in field_meta.items()
-            if key not in CONTEXT_ONLY_KEYS and meta.value not in (None, "", {})
+            if key not in CONTEXT_ONLY_KEYS
+            # 归一化失败的港口字段 value 已置空，用原文同样要参与定位
+            and (
+                meta.value not in (None, "", {})
+                or meta.raw_value not in (None, "", {})
+            )
         ]
         if not targets:
             return
@@ -961,10 +1159,14 @@ class AnalysisService(WorkflowEventPublisher):
             # 整条引用匹配不上（标签与值跨文本块、同行其它栏打断阅读顺序）时，
             # 用它的词元当区域锚点，把值的多个命中收窄到正确那一处；
             # 与值本身相同的词元要排除，否则等于拿值给自己当锚点，失去收窄意义
+            # 归一化失败的港口字段 value 已置空，定位回落到归一化前的原文
+            effective = (
+                meta.value if meta.value not in (None, "", {}) else meta.raw_value
+            )
             values = (
-                [str(item) for item in meta.value.values() if item]
-                if isinstance(meta.value, dict)
-                else [str(meta.value)]
+                [str(item) for item in effective.values() if item]
+                if isinstance(effective, dict)
+                else [str(effective)]
             )
             value_keys = {normalize_needle(item) for item in values}
             anchor_boxes = [
@@ -975,14 +1177,14 @@ class AnalysisService(WorkflowEventPublisher):
                 ),
             ]
             items: list[EvidenceLocation] = []
-            if isinstance(meta.value, dict):
+            if isinstance(effective, dict):
                 # 参与人字段（发货人/收货人）整体定位：四个子项在同一块区域，
                 # 逐项先取精确框；没匹配上的子项沿用整块区域框，避免出现
                 # "名称定位到了、地址却未定位"这种同块内自相矛盾的状态。
                 # 空值子项不产出定位（前端也不会有标记）。
                 sub_boxes: dict[str, LocatedBox] = {}
                 for sub_key in PARTY_KEYS:
-                    sub_value = meta.value.get(sub_key)
+                    sub_value = effective.get(sub_key)
                     if not sub_value:
                         continue
                     box = _pick_box(
@@ -994,7 +1196,7 @@ class AnalysisService(WorkflowEventPublisher):
                     [*sub_boxes.values(), *quote_boxes]
                 )
                 for sub_key in PARTY_KEYS:
-                    if not meta.value.get(sub_key):
+                    if not effective.get(sub_key):
                         continue
                     box = sub_boxes.get(sub_key) or region_box
                     if box is None:
@@ -1008,7 +1210,7 @@ class AnalysisService(WorkflowEventPublisher):
                     )
             else:
                 box = _pick_box(
-                    index, _value_needles(str(meta.value), quotes), anchor_boxes
+                    index, _value_needles(str(effective), quotes), anchor_boxes
                 )
                 if box is not None:
                     items.append(

@@ -61,8 +61,26 @@ class Settings(BaseSettings):
     # 港口主数据接口（poOrder PublicWebApi）根地址，如 http://<host>/PublicWebApi/；
     # 为空时禁用始发港/到达港三字码归一化
     port_api_base: str = Field(default="", validation_alias="DOCMIND_PORT_API_BASE")
-    # 港口主数据本地缓存有效期（小时），过期后重新拉取
-    port_cache_ttl_hours: float = 24.0
+    # 港口主数据本地缓存有效期（小时），过期后重新拉取；默认 7 天：
+    # 主数据更新频率低，且每次重拉会连带清空归一化结论缓存（port_outcomes），
+    # 拉得太勤会把"模型消歧结论"反复作废
+    port_cache_ttl_hours: float = Field(
+        default=168.0, validation_alias="DOCMIND_PORT_CACHE_TTL_HOURS"
+    )
+    # 港口识别模型调用的硬超时（秒）：本地匹配无法定论时才调用模型，
+    # 超时即放弃归一化、字段转人工审核，避免把 build_result 拖成几十秒
+    port_model_timeout_seconds: float = Field(
+        default=8.0, validation_alias="DOCMIND_PORT_MODEL_TIMEOUT_SECONDS"
+    )
+    # 委托客户主数据接口（poOrder PublicWebApi /api/PubFCustom）根地址；
+    # 与港口主数据是同一个服务，留空时回退使用 port_api_base，都为空则停用校验
+    customer_api_base: str = Field(
+        default="", validation_alias="DOCMIND_CUSTOMER_API_BASE"
+    )
+    # 委托客户主数据本地缓存有效期（小时），过期后按 timestamp 增量更新
+    customer_cache_ttl_hours: float = Field(
+        default=24.0, validation_alias="DOCMIND_CUSTOMER_CACHE_TTL_HOURS"
+    )
     # 单文件大小上限：托书均为单页文档，50MB 已足够宽松；注意校验发生在
     # 上传内容读入内存之后，调大会同时放大单次请求的内存占用
     max_file_size_bytes: int = Field(

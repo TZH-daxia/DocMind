@@ -1,4 +1,9 @@
-import { fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
+import {
+  fetchResult,
+  fetchTaskStatus,
+  pageImageUrl,
+  validateSubmission,
+} from "../api.js";
 import {
   DATE_VALUE_PATTERN,
   FIELD_CONTROLS,
@@ -83,6 +88,21 @@ function collectLocations(fieldMeta) {
   return locations;
 }
 
+function collectPortCandidates(fieldMeta) {
+  // 港口转三字码失败时后端会置空字段并把候选一起下发，前端在空字段下方展示
+  const candidates = {};
+  for (const [key, meta] of Object.entries(fieldMeta || {})) {
+    const items = meta?.candidates || [];
+    if (!items.length) continue;
+    candidates[key] = items.map((item) => ({
+      three_code: item.three_code || "",
+      english_name: item.english_name || "",
+      country_code: item.country_code || "",
+    }));
+  }
+  return candidates;
+}
+
 function applyResult(result) {
   const values = result.result || {};
   const meta = result.field_meta || {};
@@ -121,6 +141,7 @@ function applyResult(result) {
   dialogState.fieldStatus = fieldStatus;
   dialogState.rawValues = rawValues;
   dialogState.locations = collectLocations(meta);
+  dialogState.portCandidates = collectPortCandidates(meta);
   dialogState.focusedLocationKey = "";
   dialogState.highlightBoxes = [];
   dialogState.highlightStatus = "";
@@ -159,13 +180,40 @@ export const resultDialog = {
     dialogState.highlightBoxes = own?.length ? own : fallback || [];
   },
 
+  async validateBeforeSubmit() {
+    // 提交前校验：sfg/mdg 转三字码、fid 校验客户存在性，失败原因逐字段返回
+    const result = await validateSubmission(dialogState.taskId, {
+      fid: dialogState.form.fid || "",
+      sfg: dialogState.form.sfg || "",
+      mdg: dialogState.form.mdg || "",
+    });
+    // 校验通过的值回填表单：用户输入中文/英文时后端会转换成三字码/客户 ID
+    for (const [key, value] of Object.entries(result.resolved || {})) {
+      if (value !== null && value !== undefined && value !== "") {
+        dialogState.form[key] = String(value);
+      }
+    }
+    const errors = {};
+    for (const [key, item] of Object.entries(result.fields || {})) {
+      if (!item.ok) {
+        errors[key] = item.message || "校验未通过";
+        if (item.candidates?.length) {
+          // 失败字段的候选并入候选提示，人工可以直接照着选
+          dialogState.portCandidates[key] = item.candidates;
+        }
+      }
+    }
+    dialogState.errors = errors;
+    return result;
+  },
+
   submit() {
+    // 只做本地必填校验，不关闭弹窗：远程校验通过后才收起（见 onSubmit）
     const errors = validateBeforeSubmit(dialogState.form);
     dialogState.errors = errors;
     if (Object.keys(errors).length) {
       return { ok: false, errors, firstError: firstErrorField(errors) };
     }
-    this.close();
     return { ok: true, errors: {}, firstError: null };
   },
 };

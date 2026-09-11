@@ -354,6 +354,24 @@ def test_locate_party_subfields_individually(tmp_path: Path) -> None:
     assert all(item.page == 1 for item in located["shipper"])
 
 
+def test_locate_uses_raw_value_when_value_cleared(tmp_path: Path) -> None:
+    """港口归一化失败后 value 被置空，定位要回落到 raw_value（原文）。"""
+
+    pdf = build_pdf(tmp_path / "doc.pdf", [(50, 100, "SHANGHAI")])
+    field_meta = {
+        "sfg": FieldMetadata(
+            value=None,
+            raw_value="SHANGHAI",
+            status="needs_review",
+            evidence=[Evidence(quote="Airport of Departure: SHANGHAI")],
+        )
+    }
+
+    located = AnalysisService._locate_in_document(pdf, field_meta, ["sfg"])
+
+    assert [item.target for item in located["sfg"]] == ["sfg"]
+
+
 def test_locate_party_subfields_share_region_when_one_fails(tmp_path: Path) -> None:
     """参与人字段整体定位：地址写法对不上时沿用整块区域，不出现「未定位」。"""
 
