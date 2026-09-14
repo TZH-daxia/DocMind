@@ -3,7 +3,6 @@ from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -22,7 +21,6 @@ router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 @router.post("/tasks", status_code=202)
 async def create_analysis_task(
-    background_tasks: BackgroundTasks,
     service: Annotated[AnalysisService, Depends(get_analysis_service)],
     file: Annotated[UploadFile, File(...)],
     request_id: Annotated[str, Form(...)],
@@ -49,7 +47,9 @@ async def create_analysis_task(
     except (json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if auto_start and not task.get("idempotent_reuse"):
-        background_tasks.add_task(service.process_task, task["task_id"])
+        # 用 start_task 而非 BackgroundTasks：任务作为独立 asyncio 任务登记句柄，
+        # 之后可由 POST /tasks/{task_id}/cancel 中断
+        service.start_task(task["task_id"])
     return task
 
 
@@ -106,6 +106,22 @@ async def get_analysis_task(
 
     try:
         return service.get_task_status(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+
+
+@router.post("/tasks/{task_id}/cancel")
+async def cancel_analysis_task(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """取消一个在途任务：立即停止且不可恢复（重跑需要重新上传）。
+
+    幂等：任务已到终态（完成/失败/已取消）时原样返回，不覆盖既有结果。
+    """
+
+    try:
+        return service.cancel_task(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
 

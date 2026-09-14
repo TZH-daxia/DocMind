@@ -3,11 +3,12 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr, ValidationError
 
@@ -136,27 +137,26 @@ class DeepSeekExtractionAgent:
             | self.model
             | StrOutputParser()
         )
-        # 结构化抽取链：用 PoOrderExtraction 的 JSON schema 硬约束 12 字段。
-        # 优先 json_schema（response_format，DeepSeek 支持更好且 strict 强制必填），
-        # 失败再退到 function_calling；两者都不可用则禁用并回退 free-form。
-        self.structured_chain = None
-        for method in ("json_schema", "function_calling"):
-            try:
-                self.structured_chain = (
-                    ChatPromptTemplate.from_messages(
-                        [
-                            ("system", "{system_prompt}"),
-                            ("human", STRUCTURED_HUMAN_TEMPLATE),
-                            MessagesPlaceholder("image_messages", optional=True),
-                        ]
-                    )
-                    | self.model.with_structured_output(PoOrderExtraction, method=method)
-                )
-                break
-            except Exception as exc:  # noqa: BLE001 - 该结构化方法不可用
-                logger.debug("结构化输出方法 %s 不可用：%s", method, exc)
-        if self.structured_chain is None:
-            logger.debug("结构化输出不可用，将仅使用 free-form 抽取。")
+        # 结构化抽取链：用 PoOrderExtraction 的 schema 经 Tool Calls 约束 12 字段。
+        # 1) DeepSeek 的 response_format 只支持 text / json_object，不支持 OpenAI 的
+        #    json_schema，因此只能用 function_calling；
+        # 2) 必须显式传 tool_choice="auto"：langchain 默认会绑定具名 tool_choice，
+        #    而 DeepSeek 思考模式会直接返回 400 "Thinking mode does not support
+        #    this tool_choice"（kwargs 在 with_structured_output 内最后展开，可覆盖）；
+        # 3) 不可用只能在调用期暴露（400 发生在 ainvoke），由 extract() 捕获后回退。
+        self.structured_chain: Runnable[Any, PoOrderExtraction] | None = cast(
+            Runnable[Any, PoOrderExtraction],
+            ChatPromptTemplate.from_messages(
+                [
+                    ("system", "{system_prompt}"),
+                    ("human", STRUCTURED_HUMAN_TEMPLATE),
+                    MessagesPlaceholder("image_messages", optional=True),
+                ]
+            )
+            | self.model.with_structured_output(
+                PoOrderExtraction, method="function_calling", tool_choice="auto"
+            ),
+        )
         self.vision_chain = (
             ChatPromptTemplate.from_messages(
                 [

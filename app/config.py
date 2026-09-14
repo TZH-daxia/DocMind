@@ -46,7 +46,9 @@ class Settings(BaseSettings):
 
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
-    deepseek_model: str = "deepseek-v4-flash-vision-exp"
+    # DeepSeek V4.1 Flash 的规范模型 ID。旧名 deepseek-v4-flash-vision-exp
+    # 目前仍被兼容路由到 V4.1 Flash，但属过渡安排，随时可能下线
+    deepseek_model: str = "deepseek-flash"
     deepseek_temperature: float = 0.0
     deepseek_timeout_seconds: float = 240.0
     deepseek_max_retries: int = 1

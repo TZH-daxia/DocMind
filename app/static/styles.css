@@ -346,6 +346,11 @@ select:focus {
   background: var(--red);
 }
 
+/* 已取消：中性灰，与"失败"区分开（用户主动停止，不是出错） */
+.status-dot.cancelled {
+  background: #b6c2c9;
+}
+
 .process-actions {
   gap: 9px;
 }
@@ -377,6 +382,11 @@ select:focus {
 .status-pill.failed {
   color: #a74442;
   background: var(--red-soft);
+}
+
+.status-pill.cancelled {
+  color: #5a6b73;
+  background: #edf2f4;
 }
 
 .secondary-button {
@@ -631,6 +641,11 @@ select:focus {
 .result-status.failed {
   color: #a74442;
   background: var(--red-soft);
+}
+
+.result-status.cancelled {
+  color: #5a6b73;
+  background: #edf2f4;
 }
 
 .review-note {

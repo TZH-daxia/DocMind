@@ -30,15 +30,16 @@ PROPOSAL_FORMAT_INSTRUCTIONS = (
     "每个输入字段都必须有对应条目，不要输出 JSON 以外的任何文字或代码块标记。"
 )
 
-# 结构化输出方法：json_schema 不可用时降级为 function_calling
+# 结构化输出方法：DeepSeek 的 response_format 只支持 text / json_object，
+# 不支持 OpenAI 的 json_schema，因此走 Tool Calls（function_calling）
 StructuredMethod = Literal["json_schema", "function_calling"]
 
 
 class PortNormalizationAgent:
     """港口识别的模型调用：消歧与规范化。
 
-    优先使用结构化输出（json_schema → function_calling），模型不支持时
-    自动降级为自由文本 + JSON 解析，与主抽取链路的容错策略一致。
+    优先使用结构化输出（Tool Calls），模型不支持时自动降级为自由文本 +
+    JSON 解析，与主抽取链路的容错策略一致。
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -58,9 +59,9 @@ class PortNormalizationAgent:
             },
         )
         self.text_chain = self.model | StrOutputParser()
-        # 结构化输出方法在构造期不可验证（400 错误发生在调用时），
-        # 因此先记录候选方法，调用失败再降级
-        self._structured_method: StructuredMethod | None = "json_schema"
+        # 结构化输出在构造期不可验证（400 错误发生在调用时），因此先记录
+        # 方法，调用失败再降级为自由文本
+        self._structured_method: StructuredMethod | None = "function_calling"
 
     async def suggest(
         self,
@@ -86,8 +87,12 @@ class PortNormalizationAgent:
         ]
         if self._structured_method is not None:
             try:
+                # tool_choice="auto"：DeepSeek 思考模式不支持具名 tool_choice
+                # （langchain 默认绑定具名，会被拒），必须放行为自动选择
                 result = await self.model.with_structured_output(
-                    PortCodeSuggestionResult, method=self._structured_method
+                    PortCodeSuggestionResult,
+                    method=self._structured_method,
+                    tool_choice="auto",
                 ).ainvoke(messages)
                 return self._log_result(result)
             except Exception as exc:  # noqa: BLE001 - 降级为自由文本

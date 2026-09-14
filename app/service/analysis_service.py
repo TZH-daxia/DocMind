@@ -53,6 +53,7 @@ from app.service.customer_service import CustomerService
 from app.service.port_normalization_service import PortNormalizationService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.storage.file_store import FileStore
+from app.workflow.errors import TaskCancelledError
 from app.workflow.events import WorkflowEvent, WorkflowEventPublisher, now_iso
 from app.workflow.graph import AnalysisGraph, WorkflowHandlers
 from app.workflow.state import AnalysisState
@@ -107,6 +108,8 @@ CUSTOMER_VALIDATION_MESSAGES: dict[str, str] = {
     "unavailable": "客户已停用或不参与新业务，请确认",
     "skipped": "未配置客户主数据接口，无法校验委托客户",
 }
+# 终态：进入后不再被节点事件或取消请求改写，SSE 也据此结束推送
+TERMINAL_STATUSES = frozenset({"ready", "needs_review", "failed", "cancelled"})
 
 def _collect_boxes(index: DocumentTextIndex, needles: list[str]) -> list[LocatedBox]:
     """收集一组检索词的全部命中位置（用于"引用框"范围判定）。"""
@@ -217,6 +220,10 @@ class AnalysisService(WorkflowEventPublisher):
         # 并发闸门按名字惰性创建：信号量必须在事件循环内构造，而服务是进程级
         # 单例（启动阶段与首次请求都会取用），因此延迟到真正执行任务时创建
         self._gates: dict[str, asyncio.Semaphore] = {}
+        # 在途任务的 asyncio 句柄：取消接口据此中断任务，任务结束即移除。
+        # 只覆盖本进程发起的任务，跨重启遗留的 running 由
+        # recover_interrupted_tasks 兜底
+        self._running: dict[str, asyncio.Task[None]] = {}
 
     def _gate(self, name: str, limit: int) -> asyncio.Semaphore:
         """返回指定用途的并发闸门（同名闸门复用同一实例）。"""
@@ -402,7 +409,7 @@ class AnalysisService(WorkflowEventPublisher):
                 yield f"data: {status_snapshot}\n\n"
 
             if (
-                status.get("status") in {"ready", "needs_review", "failed"}
+                status.get("status") in TERMINAL_STATUSES
                 and line_index >= self._line_count(log_path)
             ):
                 break
@@ -414,6 +421,18 @@ class AnalysisService(WorkflowEventPublisher):
         if not path.exists():
             return 0
         return len(self.file_store.read_text(path, errors="replace").splitlines())
+
+    def start_task(self, task_id: str) -> None:
+        """把任务作为独立 asyncio 任务启动，并登记句柄供取消使用。
+
+        用 `asyncio.create_task` 而不是 FastAPI 的 BackgroundTasks：后者是直接
+        await 协程、不创建独立任务，登记到的会是整个 HTTP 请求的 Task，取消它
+        会波及请求处理链。这里只创建、不 await，立即返回。
+        """
+
+        task = asyncio.create_task(self.process_task(task_id))
+        self._running[task_id] = task
+        task.add_done_callback(lambda _finished: self._running.pop(task_id, None))
 
     async def process_task(self, task_id: str) -> None:
         """运行一份已保存文档的 LangGraph 工作流。
@@ -465,6 +484,16 @@ class AnalysisService(WorkflowEventPublisher):
         )
         try:
             await workflow.ainvoke(state)
+        except TaskCancelledError:
+            # 节点入口的协作式取消：状态通常已由 cancel_task 落盘，这里幂等收尾
+            logger.info("Analysis task cancelled at node boundary: %s", task_id)
+            self._cancel_task(task_id)
+        except asyncio.CancelledError:
+            # 取消信号打断了模型调用/线程等待：同样收敛为 cancelled。
+            # 不重抛：本任务由 start_task 独立持有、没有等待方，重抛只会让事件
+            # 循环记录一条无意义的 ASGI 异常堆栈
+            logger.info("Analysis task cancelled while awaiting: %s", task_id)
+            self._cancel_task(task_id)
         except DocumentTypeMismatchError as exc:
             # 传错文件：不是抽取问题，单独错误码，前端据此给"文件类型不符"提示
             logger.warning("Analysis task document mismatch: %s（%s）", task_id, exc)
@@ -520,21 +549,75 @@ class AnalysisService(WorkflowEventPublisher):
             details=details,
         )
 
+    def cancel_task(self, task_id: str) -> dict[str, Any]:
+        """请求取消一个在途任务：先落 cancelled 状态，再中断其 asyncio 任务。
+
+        幂等：任务已处于终态时原样返回当前状态，不覆盖既有结果——任务可能刚好
+        跑完，此时取消应当让位于结果。
+
+        先落状态而不是等捕获到 CancelledError 再落，是为了让前端立刻看到"已取消"；
+        步骤本身也不可恢复，取消后如需重跑必须重新上传。
+        """
+
+        status = self.get_task_status(task_id)
+        if status.get("status") in TERMINAL_STATUSES:
+            return status
+        cancelled = self._cancel_task(task_id)
+        handle = self._running.get(task_id)
+        if handle is not None:
+            handle.cancel()
+        return cancelled
+
+    def _cancel_task(self, task_id: str, reason: str = "任务已取消，不再继续处理") -> dict[str, Any]:
+        """把任务标记为 cancelled（幂等：已是终态时不覆盖）。
+
+        与 _fail_task 的区别：取消是用户主动行为而非异常，因此不写 error 字段，
+        前端按"已取消"展示而不是失败卡片。
+        """
+
+        status = self.get_task_status(task_id)
+        if status.get("status") in TERMINAL_STATUSES:
+            return status
+        self._update_status(
+            task_id,
+            status="cancelled",
+            progress=100,
+            current_stage="cancelled",
+            completed_at=now_iso(),
+            cancel_requested=True,
+        )
+        self._append_process_event(
+            task_id,
+            event_type="task_cancelled",
+            message=reason,
+            stage="cancelled",
+            details={"error_code": "TASK_CANCELLED"},
+        )
+        return self.get_task_status(task_id)
+
+    def _raise_if_cancelled(self, task_id: str) -> None:
+        """节点入口的取消检查点：命中则抛出 TaskCancelledError 终止工作流。
+
+        取消标志落在任务状态文件里，因此即使 asyncio 取消信号没赶上（任务正卡在
+        不可取消的线程操作里），工作流也会在下一个节点边界停下，不再继续往后跑。
+        """
+
+        try:
+            status = self.get_task_status(task_id)
+        except FileNotFoundError:
+            return
+        if status.get("status") == "cancelled" or status.get("cancel_requested"):
+            raise TaskCancelledError(f"任务已取消：{task_id}")
+
     def publish(self, event: WorkflowEvent) -> None:
         """更新任务状态快照并写入任务日志，预留前端推送扩展点。"""
 
         status = self.get_task_status(event.task_id)
         status["last_node_event"] = event.to_dict()
-        if event.event_type == "started":
-            status.update(
-                {
-                    "status": "running",
-                    "progress": event.progress,
-                    "current_stage": event.node_name,
-                }
-            )
-        elif event.event_type == "succeeded":
-            if status.get("status") not in {"ready", "needs_review", "failed"}:
+        # 已进入终态（含用户取消）后，节点事件只追加时间线、不再改写状态：
+        # 否则正在收尾的节点会把 cancelled 覆盖回 running
+        if status.get("status") not in TERMINAL_STATUSES:
+            if event.event_type in {"started", "succeeded"}:
                 status.update(
                     {
                         "status": "running",
@@ -542,16 +625,16 @@ class AnalysisService(WorkflowEventPublisher):
                         "current_stage": event.node_name,
                     }
                 )
-        elif event.event_type == "skipped":
-            pass
-        else:
-            status.update(
-                {
-                    "status": "failed",
-                    "progress": 100,
-                    "current_stage": event.node_name,
-                }
-            )
+            elif event.event_type == "skipped":
+                pass
+            else:
+                status.update(
+                    {
+                        "status": "failed",
+                        "progress": 100,
+                        "current_stage": event.node_name,
+                    }
+                )
         status["updated_at"] = datetime.now().astimezone().isoformat()
         self.file_store.write_json_atomic(self.file_store.task_status_path(event.task_id), status)
         self._append_process_payload(event.task_id, event.to_dict())
@@ -613,6 +696,7 @@ class AnalysisService(WorkflowEventPublisher):
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
 
         task_id = state["task_id"]
+        self._raise_if_cancelled(task_id)
         # LibreOffice 转换单独限流：每次转换都会拉起一个独立 soffice 进程，
         # 并发过高会拖垮机器并触发转换超时，因此与任务并发上限分开控制
         async with self._gate(
@@ -649,6 +733,7 @@ class AnalysisService(WorkflowEventPublisher):
         """读取解析图片并生成视觉理解内容（对 VLM 偶发拒答做重试）。"""
 
         task_id = state["task_id"]
+        self._raise_if_cancelled(task_id)
         # 读图 + 四象限裁剪是同步 CPU/IO 操作，放进线程避免阻塞事件循环
         images = await asyncio.to_thread(
             self._load_images, state.get("image_paths", [])
@@ -697,6 +782,7 @@ class AnalysisService(WorkflowEventPublisher):
         """
 
         task_id = state["task_id"]
+        self._raise_if_cancelled(task_id)
         vlm_image_content = state.get("vlm_image_content", "")
         verdict = detect_document_type(vlm_image_content)
         if verdict.blocks_extraction:
@@ -746,6 +832,7 @@ class AnalysisService(WorkflowEventPublisher):
         """按候选置信度生成最终结果：保留模型原值，低于阈值标记待人工审核。"""
 
         task_id = state["task_id"]
+        self._raise_if_cancelled(task_id)
         schema_version = state.get("schema_version", "po_order.v1")
         context = state.get("context") or {}
         threshold = self.settings.review_confidence_threshold

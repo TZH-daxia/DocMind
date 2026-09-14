@@ -31,6 +31,13 @@ const analysisApi = {
     return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}`);
   },
 
+  // 取消在途任务：任务立即停止且不可恢复（重跑需要重新上传）
+  async cancelTask(taskId) {
+    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+    });
+  },
+
   subscribe(taskId, onMessage, onError) {
     const source = new EventSource(
       `${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/events`,

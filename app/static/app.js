@@ -21,6 +21,7 @@ const elements = {
   selectedName: document.querySelector("#selectedName"),
   selectedTaskId: document.querySelector("#selectedTaskId"),
   selectedStatus: document.querySelector("#selectedStatus"),
+  cancelButton: document.querySelector("#cancelButton"),
   progressBar: document.querySelector("#progressBar"),
   progressLabel: document.querySelector("#progressLabel"),
   progressPercent: document.querySelector("#progressPercent"),
@@ -63,6 +64,7 @@ let latestProgressEvent = null;
 document.addEventListener("DOMContentLoaded", () => {
   elements.fileInput.addEventListener("change", onFileSelected);
   elements.refreshButton.addEventListener("click", loadFiles);
+  elements.cancelButton.addEventListener("click", cancelSelectedTask);
   elements.copyButton.addEventListener("click", copyResult);
   elements.prepareButton.addEventListener("click", openPrepareDialog);
   document.addEventListener("docmind:toast", onDialogToast);
@@ -151,7 +153,7 @@ async function selectTask(taskId) {
   elements.selectedName.textContent = item.original_name;
   elements.selectedTaskId.textContent = item.task_id;
   initEventList();
-  renderEvents(state.events.get(taskId) || [], false);
+  renderEvents(state.events.get(taskId) || [], false, item.status);
   renderStatus(item.status, item.progress, item.current_stage, item.error_code);
   renderResult(null, item.status, failedError(item));
   if (item.status === "failed") {
@@ -194,9 +196,12 @@ function handleTaskMessage(message) {
     return;
   }
   if (message.kind === "status") {
+    // 先同步本地列表状态：flushEvents 里的事件渲染要据此判断任务是否已取消
+    const currentTask = state.files.find((file) => file.task_id === message.task_id);
+    if (currentTask) currentTask.status = message.status;
     flushEvents();
     renderStatus(message.status, message.progress, message.current_stage, message.error?.code);
-    if (["ready", "needs_review", "failed"].includes(message.status)) {
+    if (["ready", "needs_review", "failed", "cancelled"].includes(message.status)) {
       stopEvents();
       const finalStatus = message.status;
       if (finalStatus === "failed") {
@@ -204,7 +209,8 @@ function handleTaskMessage(message) {
       }
       setTimeout(() => {
         loadFiles();
-        if (finalStatus !== "failed") {
+        // 失败/取消都没有结果可载入
+        if (finalStatus !== "failed" && finalStatus !== "cancelled") {
           loadSelectedResult();
         }
       }, 2200);
@@ -225,7 +231,7 @@ function flushEvents() {
   }
   const latest = latestProgressEvent;
   latestProgressEvent = null;
-  renderEvents(state.events.get(state.selectedTaskId) || [], true);
+  renderEvents(state.events.get(state.selectedTaskId) || [], true, selectedTaskStatus());
   if (latest) {
     renderStatus(null, latest.progress, latest.message);
   }
@@ -244,10 +250,15 @@ async function loadTaskHistory(taskId) {
     const payload = await analysisApi.getEvents(taskId);
     const items = payload.items || [];
     state.events.set(taskId, items);
-    renderEvents(items, true);
+    renderEvents(items, true, selectedTaskStatus());
   } catch (error) {
     showToast(`执行历史加载失败：${error.message}，可稍后刷新重试`, "error");
   }
+}
+// 当前选中任务的最新状态：事件渲染据此判断任务是否已取消
+function selectedTaskStatus() {
+  const item = state.files.find((file) => file.task_id === state.selectedTaskId);
+  return item?.status || null;
 }
 function renderFileList() {
   elements.fileCount.textContent = state.files.length;
@@ -265,9 +276,11 @@ function renderFileList() {
             <strong>${escapeHtml(item.original_name)}</strong>
             <small>${escapeHtml(item.current_stage || "等待运行")}</small>
             ${
-              item.status === "failed" && ERROR_SHORT_LABELS[item.error_code]
-                ? `<em class="file-flag">${escapeHtml(ERROR_SHORT_LABELS[item.error_code])}</em>`
-                : ""
+              item.status === "cancelled"
+                ? '<em class="file-flag">已取消</em>'
+                : item.status === "failed" && ERROR_SHORT_LABELS[item.error_code]
+                  ? `<em class="file-flag">${escapeHtml(ERROR_SHORT_LABELS[item.error_code])}</em>`
+                  : ""
             }
           </span>
           <span class="status-dot ${statusClass(item.status)}"></span>
@@ -284,11 +297,16 @@ function renderStatus(status, progress, label, errorCode) {
     elements.selectedStatus.textContent = text;
     elements.selectedStatus.className = `status-pill ${statusClass(status)}`;
     elements.selectedStatus.title = text;
+    updateCancelButton(status);
   }
   const safeProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, safeProgress))}%`;
   elements.progressPercent.textContent = `${safeProgress}%`;
   elements.progressLabel.textContent = label || "等待运行";
+}
+// 「停止任务」只在任务仍可被中断时可用：终态（含已取消）不给点
+function updateCancelButton(status) {
+  elements.cancelButton.disabled = !["queued", "running"].includes(status);
 }
 function initEventList() {
   elements.eventList.innerHTML = "";
@@ -314,7 +332,7 @@ function buildNodeRow(key, label) {
   });
   displayedStates.set(key, "idle");
 }
-function renderEvents(taskEvents, animate = false) {
+function renderEvents(taskEvents, animate = false, taskStatus = null) {
   const grouped = new Map(
     nodes.map(([key, label]) => [key, { key, label, state: "idle", message: "", duration: null }]),
   );
@@ -334,6 +352,18 @@ function renderEvents(taskEvents, animate = false) {
     target.message = event.message;
     target.duration = event.duration_ms;
   });
+  // 任务被取消后不可能还有节点在跑：只留下 "started"（没有对应的完成事件）
+  // 的节点是被打断的，退回未执行态显示"等待执行"，避免界面停留在"开始执行"
+  // 让人误以为任务仍在继续
+  if (taskStatus === "cancelled") {
+    grouped.forEach((item) => {
+      if (item.state === "started") {
+        item.state = "idle";
+        item.message = "";
+        item.duration = null;
+      }
+    });
+  }
   let delayIndex = 0;
   let failureSeen = false;
   grouped.forEach((item) => {
@@ -432,6 +462,21 @@ async function loadTaskError(taskId) {
     // 详情拿不到时保留列表项里的兜底信息，不打扰用户
   }
 }
+async function cancelSelectedTask() {
+  const taskId = state.selectedTaskId;
+  if (!taskId) return;
+  elements.cancelButton.disabled = true;
+  try {
+    await analysisApi.cancelTask(taskId);
+    showToast("已停止任务，取消后不可恢复", "success");
+    await loadFiles();
+    await selectTask(taskId);
+  } catch (error) {
+    showToast(`停止失败：${error.message}`, "error");
+    // 失败时恢复按钮，避免用户误以为任务已停
+    elements.cancelButton.disabled = false;
+  }
+}
 async function copyResult() {
   const content = elements.resultJson.textContent;
   if (!content || content === "{}") return;
@@ -467,6 +512,7 @@ function statusText(status, errorCode) {
     ready: "已完成",
     needs_review: "待人工审核",
     failed: "失败",
+    cancelled: "已取消",
     unknown: "未知",
   }[status] || "未运行";
 }
@@ -477,6 +523,7 @@ function statusClass(status) {
     ready: "ready",
     needs_review: "review",
     failed: "failed",
+    cancelled: "cancelled",
   }[status] || "idle";
 }
 function getExtension(filename) {
