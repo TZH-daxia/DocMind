@@ -10,6 +10,25 @@ const nodes = [
   ["extract_candidates", "字段候选提取"],
   ["build_result", "置信度判断与输出"],
 ];
+const NODE_LABELS = Object.fromEntries(nodes);
+// 进度区文案：状态标识与节点名转成中文，节点事件的自然语言消息原样展示
+const STAGE_TEXT = {
+  queued: "等待运行",
+  starting: "准备执行",
+  paused: "已暂停",
+  cancelled: "已取消",
+  failed: "执行失败",
+  completed: "已完成",
+};
+function progressLabel(label) {
+  if (!label) return "等待运行";
+  return STAGE_TEXT[label] || NODE_LABELS[label] || label;
+}
+// 文件列表副标题：已取消/已暂停由状态小标表达，这里留空避免重复
+function listStageText(item) {
+  if (item.status === "cancelled" || item.status === "paused") return "";
+  return progressLabel(item.current_stage);
+}
 const MAX_UPLOAD_FILES = 5;
 const elements = {
   fileInput: document.querySelector("#fileInput"),
@@ -22,6 +41,7 @@ const elements = {
   selectedTaskId: document.querySelector("#selectedTaskId"),
   selectedStatus: document.querySelector("#selectedStatus"),
   cancelButton: document.querySelector("#cancelButton"),
+  pauseButton: document.querySelector("#pauseButton"),
   progressBar: document.querySelector("#progressBar"),
   progressLabel: document.querySelector("#progressLabel"),
   progressPercent: document.querySelector("#progressPercent"),
@@ -64,6 +84,7 @@ let latestProgressEvent = null;
 document.addEventListener("DOMContentLoaded", () => {
   elements.fileInput.addEventListener("change", onFileSelected);
   elements.refreshButton.addEventListener("click", loadFiles);
+  elements.pauseButton.addEventListener("click", togglePauseTask);
   elements.cancelButton.addEventListener("click", cancelSelectedTask);
   elements.copyButton.addEventListener("click", copyResult);
   elements.prepareButton.addEventListener("click", openPrepareDialog);
@@ -274,13 +295,15 @@ function renderFileList() {
           <span class="file-type">${escapeHtml(getExtension(item.original_name))}</span>
           <span class="file-copy">
             <strong>${escapeHtml(item.original_name)}</strong>
-            <small>${escapeHtml(item.current_stage || "等待运行")}</small>
+            <small>${escapeHtml(listStageText(item))}</small>
             ${
               item.status === "cancelled"
                 ? '<em class="file-flag">已取消</em>'
-                : item.status === "failed" && ERROR_SHORT_LABELS[item.error_code]
-                  ? `<em class="file-flag">${escapeHtml(ERROR_SHORT_LABELS[item.error_code])}</em>`
-                  : ""
+                : item.status === "paused"
+                  ? '<em class="file-flag">已暂停</em>'
+                  : item.status === "failed" && ERROR_SHORT_LABELS[item.error_code]
+                    ? `<em class="file-flag">${escapeHtml(ERROR_SHORT_LABELS[item.error_code])}</em>`
+                    : ""
             }
           </span>
           <span class="status-dot ${statusClass(item.status)}"></span>
@@ -297,16 +320,20 @@ function renderStatus(status, progress, label, errorCode) {
     elements.selectedStatus.textContent = text;
     elements.selectedStatus.className = `status-pill ${statusClass(status)}`;
     elements.selectedStatus.title = text;
-    updateCancelButton(status);
+    updateTaskButtons(status);
   }
   const safeProgress = Number.isFinite(Number(progress)) ? Number(progress) : 0;
   elements.progressBar.style.width = `${Math.max(0, Math.min(100, safeProgress))}%`;
   elements.progressPercent.textContent = `${safeProgress}%`;
-  elements.progressLabel.textContent = label || "等待运行";
+  elements.progressLabel.textContent = progressLabel(label);
 }
-// 「停止任务」只在任务仍可被中断时可用：终态（含已取消）不给点
-function updateCancelButton(status) {
-  elements.cancelButton.disabled = !["queued", "running"].includes(status);
+// 中断按钮只在任务可操作时点亮：终态（完成/失败/已取消）一律置灰。
+// 暂停按钮在暂停态显示为「继续」，运行中显示为「暂停」
+function updateTaskButtons(status) {
+  const active = ["queued", "running", "paused"].includes(status);
+  elements.pauseButton.disabled = !active;
+  elements.cancelButton.disabled = !active;
+  elements.pauseButton.textContent = status === "paused" ? "继续" : "暂停";
 }
 function initEventList() {
   elements.eventList.innerHTML = "";
@@ -352,10 +379,10 @@ function renderEvents(taskEvents, animate = false, taskStatus = null) {
     target.message = event.message;
     target.duration = event.duration_ms;
   });
-  // 任务被取消后不可能还有节点在跑：只留下 "started"（没有对应的完成事件）
+  // 取消/暂停后不可能还有节点在跑：只留下 "started"（没有对应的完成事件）
   // 的节点是被打断的，退回未执行态显示"等待执行"，避免界面停留在"开始执行"
-  // 让人误以为任务仍在继续
-  if (taskStatus === "cancelled") {
+  // 让人误以为任务仍在继续（恢复时该节点会重新发出 started，显示自然回到"开始执行"）
+  if (taskStatus === "cancelled" || taskStatus === "paused") {
     grouped.forEach((item) => {
       if (item.state === "started") {
         item.state = "idle";
@@ -462,17 +489,39 @@ async function loadTaskError(taskId) {
     // 详情拿不到时保留列表项里的兜底信息，不打扰用户
   }
 }
+async function togglePauseTask() {
+  const taskId = state.selectedTaskId;
+  if (!taskId) return;
+  const item = state.files.find((file) => file.task_id === taskId);
+  const paused = item?.status === "paused";
+  elements.pauseButton.disabled = true;
+  try {
+    if (paused) {
+      await analysisApi.resumeTask(taskId);
+      showToast("已恢复任务，将从断点继续", "success");
+    } else {
+      await analysisApi.pauseTask(taskId);
+      showToast("已暂停任务，可随时继续", "success");
+    }
+    await loadFiles();
+    await selectTask(taskId);
+  } catch (error) {
+    showToast(`${paused ? "继续" : "暂停"}失败：${error.message}`, "error");
+    // 失败时恢复按钮，避免用户误以为已经生效
+    elements.pauseButton.disabled = false;
+  }
+}
 async function cancelSelectedTask() {
   const taskId = state.selectedTaskId;
   if (!taskId) return;
   elements.cancelButton.disabled = true;
   try {
     await analysisApi.cancelTask(taskId);
-    showToast("已停止任务，取消后不可恢复", "success");
+    showToast("已取消任务，取消后不可恢复", "success");
     await loadFiles();
     await selectTask(taskId);
   } catch (error) {
-    showToast(`停止失败：${error.message}`, "error");
+    showToast(`取消失败：${error.message}`, "error");
     // 失败时恢复按钮，避免用户误以为任务已停
     elements.cancelButton.disabled = false;
   }
@@ -513,6 +562,7 @@ function statusText(status, errorCode) {
     needs_review: "待人工审核",
     failed: "失败",
     cancelled: "已取消",
+    paused: "已暂停",
     unknown: "未知",
   }[status] || "未运行";
 }
@@ -524,6 +574,7 @@ function statusClass(status) {
     needs_review: "review",
     failed: "failed",
     cancelled: "cancelled",
+    paused: "paused",
   }[status] || "idle";
 }
 function getExtension(filename) {

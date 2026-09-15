@@ -16,6 +16,29 @@ from app.workflow.nodes.read_images_with_vlm import build_read_images_with_vlm_n
 from app.workflow.nodes.render_document import build_render_document_node
 from app.workflow.state import AnalysisState
 
+# 固定的线性执行顺序：恢复执行时据此找到第一个未完成节点
+NODE_ORDER = (
+    "render_document",
+    "read_images_with_vlm",
+    "extract_candidates",
+    "build_result",
+)
+
+
+def _first_pending_node(state: AnalysisState) -> str:
+    """恢复执行的入口：从第一个未完成节点开始。
+
+    `completed_nodes` 由服务层按磁盘产物推断（产物存在即该节点已完成）。
+    流程是严格线性的，所以条件入口 + 原有顺序边即可实现"暂停后从断点继续"，
+    首次运行时该列表为空，入口仍是 render_document，行为与改造前一致。
+    """
+
+    completed = set(state.get("completed_nodes") or ())
+    for node_name in NODE_ORDER:
+        if node_name not in completed:
+            return node_name
+    return END
+
 
 @dataclass(frozen=True)
 class WorkflowHandlers:
@@ -55,7 +78,7 @@ class AnalysisGraph:
             "build_result",
             build_build_result_node(handlers.build_result, publisher),
         )
-        graph.set_entry_point("render_document")
+        graph.set_conditional_entry_point(_first_pending_node)
         graph.add_edge("render_document", "read_images_with_vlm")
         graph.add_edge("read_images_with_vlm", "extract_candidates")
         graph.add_edge("extract_candidates", "build_result")

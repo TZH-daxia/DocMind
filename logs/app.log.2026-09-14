@@ -1,0 +1,1148 @@
+2026-09-14 09:02:08 INFO app.logging_config [pid=2212] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 09:02:08 INFO app.main [pid=2212] DocMind application started
+2026-09-14 09:02:14 INFO app.storage.file_store [pid=2212] 已清理 66 个超过保留期的运行产物
+2026-09-14 09:02:14 INFO app.service.analysis_service [pid=2212] 数据保留期清理完成：['parsed_documents/task_20260910_172907_B-68046_托单_26212e3e', 'parsed_documents/task_20260911_100252_B-68046_托单_4a83708a', 'parsed_documents/task_20260911_100252_托书20260826_R3_TEC_a9c91a05', 'parsed_documents/task_20260911_100252_空运托书_13a48fd6', 'parsed_documents/task_20260911_101919_B-68046_托单_a128c275', 'parsed_documents/task_20260911_101919_托书20260826_R3_TEC_012a278b', 'parsed_documents/task_20260911_101919_空运托书_a1062d48', 'parsed_documents/task_20260911_103659_Booking_for_GGK26-X049_5f3fdc4d', 'parsed_documents/task_20260911_103659_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_fbd70f0b', 'parsed_documents/task_20260911_105350_Booking_for_GGK26-X049_0cc382f1', 'parsed_documents/task_20260911_105350_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_6c4d5d7b', 'parsed_documents/task_20260911_110111_Booking_for_GGK26-X049_1c330e63', 'parsed_documents/task_20260911_110111_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_b176ce2b', 'parsed_documents/task_20260911_111621_B-68046_托单_b754a27d', 'parsed_documents/task_20260911_111622_Booking_for_GGK26-X049_986a5653', 'parsed_documents/task_20260911_111622_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_a5fb2567', 'parsed_documents/task_20260911_111622_托书20260826_R3_TEC_52882dbf', 'parsed_documents/task_20260911_111622_空运托书_8e74dcf8', 'parsed_documents/task_20260911_131239_11_dc7d1c61', 'parsed_documents/task_20260911_133821_11_1fcac790', 'parsed_documents/task_20260911_133921_托书20260826_R3_TEC_ecdf1cc0', 'parsed_documents/task_20260911_134816_B-68046_托单_902b7e2c', 'parsed_documents/task_20260911_134816_Booking_for_GGK26-X049_45594d8a', 'parsed_documents/task_20260911_134816_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_7ef2a07e', 'parsed_documents/task_20260911_134816_托书20260826_R3_TEC_6069e9f7', 'parsed_documents/task_20260911_134816_空运托书_94d2e259', 'parsed_documents/task_20260911_150427_B-68046_托单_8e2de50b', 'parsed_documents/task_20260911_150427_托书20260826_R3_TEC_85a77e2f', 'parsed_documents/task_20260911_150427_空运托书_3a1c204b', 'parsed_documents/task_20260911_163351_B-68046_托单_795f20d6', 'parsed_documents/task_20260911_163352_Booking_for_GGK26-X049_b77d415e', 'parsed_documents/task_20260911_163352_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_e4e51352', 'parsed_documents/task_20260911_163352_托书20260826_R3_TEC_24f6d1d9', 'parsed_documents/task_20260911_163352_空运托书_4e007e22', 'analysis_results/task_20260910_172907_B-68046_托单_26212e3e.json', 'analysis_results/task_20260911_100252_B-68046_托单_4a83708a.json', 'analysis_results/task_20260911_100252_托书20260826_R3_TEC_a9c91a05.json', 'analysis_results/task_20260911_100252_空运托书_13a48fd6.json', 'analysis_results/task_20260911_101919_B-68046_托单_a128c275.json', 'analysis_results/task_20260911_101919_托书20260826_R3_TEC_012a278b.json', 'analysis_results/task_20260911_101919_空运托书_a1062d48.json', 'analysis_results/task_20260911_103659_Booking_for_GGK26-X049_5f3fdc4d.json', 'analysis_results/task_20260911_103659_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_fbd70f0b.json', 'analysis_results/task_20260911_105350_Booking_for_GGK26-X049_0cc382f1.json', 'analysis_results/task_20260911_105350_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_6c4d5d7b.json', 'analysis_results/task_20260911_110111_Booking_for_GGK26-X049_1c330e63.json', 'analysis_results/task_20260911_110111_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_b176ce2b.json', 'analysis_results/task_20260911_111621_B-68046_托单_b754a27d.json', 'analysis_results/task_20260911_111622_Booking_for_GGK26-X049_986a5653.json', 'analysis_results/task_20260911_111622_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_a5fb2567.json', 'analysis_results/task_20260911_111622_托书20260826_R3_TEC_52882dbf.json', 'analysis_results/task_20260911_111622_空运托书_8e74dcf8.json', 'analysis_results/task_20260911_133921_托书20260826_R3_TEC_ecdf1cc0.json', 'analysis_results/task_20260911_134816_B-68046_托单_902b7e2c.json', 'analysis_results/task_20260911_134816_Booking_for_GGK26-X049_45594d8a.json', 'analysis_results/task_20260911_134816_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_7ef2a07e.json', 'analysis_results/task_20260911_134816_托书20260826_R3_TEC_6069e9f7.json', 'analysis_results/task_20260911_134816_空运托书_94d2e259.json', 'analysis_results/task_20260911_150427_B-68046_托单_8e2de50b.json', 'analysis_results/task_20260911_150427_托书20260826_R3_TEC_85a77e2f.json', 'analysis_results/task_20260911_150427_空运托书_3a1c204b.json', 'analysis_results/task_20260911_163351_B-68046_托单_795f20d6.json', 'analysis_results/task_20260911_163352_Booking_for_GGK26-X049_b77d415e.json', 'analysis_results/task_20260911_163352_G2877FRA_Booking_information_--_XPP_to_SKF_Schweinfurt260814_XPP2608-09_e4e51352.json', 'analysis_results/task_20260911_163352_托书20260826_R3_TEC_24f6d1d9.json', 'analysis_results/task_20260911_163352_空运托书_4e007e22.json']
+2026-09-14 09:02:39 WARNING app.agent.deepseek_extractor [pid=2212] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-14 09:02:45 WARNING app.agent.deepseek_extractor [pid=2212] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-14 09:02:46 WARNING app.agent.deepseek_extractor [pid=2212] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-14 09:02:46 WARNING app.agent.deepseek_extractor [pid=2212] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-14 09:02:48 WARNING app.agent.deepseek_extractor [pid=2212] 结构化抽取失败，回退 free-form：Error code: 400 - {'error': {'message': 'This response_format type is unavailable now', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_request_error'}}
+2026-09-14 09:02:50 INFO app.service.port_normalization_service [pid=2212] 港口主数据索引就绪：6394 条记录（版本 2026-09-10T17:29:19.173259+08:00）
+2026-09-14 09:02:50 INFO app.service.analysis_service [pid=2212] 港口归一化未定论（not_a_port／不是港口或机场（国家/地区、费用条款或表头词）：GERMANY），字段 mdg 降级为待人工审核
+2026-09-14 09:02:52 INFO app.service.analysis_service [pid=2212] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 09:02:54 INFO app.service.analysis_service [pid=2212] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 09:04:09 INFO app.service.customer_service [pid=2212] 委托客户主数据索引就绪：14706 条记录
+2026-09-14 09:51:49 INFO app.main [pid=2212] DocMind application stopped
+2026-09-14 10:12:23 INFO app.logging_config [pid=15148] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 10:12:23 INFO app.main [pid=15148] DocMind application started
+2026-09-14 13:30:27 INFO app.main [pid=15148] DocMind application stopped
+2026-09-14 13:42:00 INFO app.logging_config [pid=5872] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 13:42:00 INFO app.main [pid=5872] DocMind application started
+2026-09-14 13:56:25 INFO app.logging_config [pid=4552] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 13:58:48 INFO app.logging_config [pid=16852] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 13:59:35 INFO app.logging_config [pid=5172] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 14:02:01 INFO app.logging_config [pid=17992] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 14:02:01 INFO app.main [pid=17992] DocMind application started
+2026-09-14 14:02:36 INFO app.service.port_normalization_service [pid=17992] 港口主数据索引就绪：6394 条记录（版本 2026-09-10T17:29:19.173259+08:00）
+2026-09-14 14:02:36 INFO app.service.analysis_service [pid=17992] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 14:04:57 INFO app.service.analysis_service [pid=17992] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 14:04:59 INFO app.service.analysis_service [pid=17992] 港口归一化未定论（not_a_port／不是港口或机场（国家/地区、费用条款或表头词）：GERMANY），字段 mdg 降级为待人工审核
+2026-09-14 14:05:03 INFO app.service.analysis_service [pid=17992] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 14:08:08 INFO app.service.analysis_service [pid=17992] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 14:12:27 INFO app.logging_config [pid=17752] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 14:14:03 INFO app.logging_config [pid=14556] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 14:14:41 INFO app.logging_config [pid=15800] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 14:14:41 INFO app.main [pid=15800] DocMind application started
+2026-09-14 14:15:03 INFO app.service.analysis_service [pid=15800] Analysis task cancelled while awaiting: task_20260914_141502_smoke_cancel_d7de0e2c
+2026-09-14 14:15:28 INFO app.service.analysis_service [pid=15800] Analysis task cancelled while awaiting: task_20260914_141523_smoke_cancel_c1cfe0ea
+2026-09-14 14:23:02 INFO app.service.analysis_service [pid=15800] Analysis task cancelled while awaiting: task_20260914_142252_托书20260826_R3_TEC_89035ef4
+2026-09-14 14:23:06 INFO app.service.analysis_service [pid=15800] Analysis task cancelled while awaiting: task_20260914_142252_空运托书_2ad8b70e
+2026-09-14 14:46:33 WARNING app.agent.deepseek_extractor [pid=15800] 结构化抽取未得到任何字段值，回退 free-form
+2026-09-14 14:46:34 INFO app.service.port_normalization_service [pid=15800] 港口主数据索引就绪：6394 条记录（版本 2026-09-10T17:29:19.173259+08:00）
+2026-09-14 14:46:34 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 14:46:35 WARNING app.agent.deepseek_extractor [pid=15800] DeepSeek 抽取结果为空（第 1 次，输出长度 1010），准备重试
+2026-09-14 14:46:37 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（not_a_port／不是港口或机场（国家/地区、费用条款或表头词）：GERMANY），字段 mdg 降级为待人工审核
+2026-09-14 14:46:37 WARNING app.agent.deepseek_extractor [pid=15800] DeepSeek 抽取结果为空（第 2 次，输出长度 1010），准备重试
+2026-09-14 14:46:37 ERROR app.workflow.node_runner [pid=15800] 工作流节点执行失败：task_id=task_20260914_144626_11_ab0af38f node=extract_candidates
+app.agent.deepseek_extractor.EmptyExtractionError: 模型输出不含任何字段（输出长度 1010）
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 805, in extract_candidates
+    model_candidates = await self.deepseek.extract(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 258, in extract
+    raise EmptyExtractionError(
+app.agent.deepseek_extractor.EmptyExtractionError: EMPTY_EXTRACTION: 模型输出无法产生有效字段候选：模型输出不含任何字段（输出长度 1010）
+2026-09-14 14:46:37 ERROR app.service.analysis_service [pid=15800] Analysis task empty extraction: task_20260914_144626_11_ab0af38f（EMPTY_EXTRACTION: 模型输出无法产生有效字段候选：模型输出不含任何字段（输出长度 1010））
+2026-09-14 14:46:38 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 15:43:04 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 15:43:12 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（not_a_port／不是港口或机场（国家/地区、费用条款或表头词）：GERMANY），字段 mdg 降级为待人工审核
+2026-09-14 15:43:13 INFO app.service.analysis_service [pid=15800] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 16:17:26 INFO app.main [pid=15800] DocMind application stopped
+2026-09-14 16:18:06 INFO app.logging_config [pid=15324] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 16:18:06 INFO app.main [pid=15324] DocMind application started
+2026-09-14 17:02:01 INFO app.service.port_normalization_service [pid=15324] 港口主数据索引就绪：6394 条记录（版本 2026-09-10T17:29:19.173259+08:00）
+2026-09-14 17:02:01 INFO app.service.analysis_service [pid=15324] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 17:02:05 INFO app.service.analysis_service [pid=15324] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 17:02:08 INFO app.service.analysis_service [pid=15324] 港口归一化未定论（not_a_port／不是港口或机场（国家/地区、费用条款或表头词）：GERMANY），字段 mdg 降级为待人工审核
+2026-09-14 17:40:36 INFO app.logging_config [pid=4300] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:42:41 INFO app.logging_config [pid=5308] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:43:13 INFO app.logging_config [pid=10356] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:43:13 INFO app.main [pid=10356] DocMind application started
+2026-09-14 17:43:37 INFO app.service.analysis_service [pid=10356] Analysis task interrupted (pause) while awaiting: task_20260914_174334_smoke_pr_e43deea1
+2026-09-14 17:44:47 INFO app.service.analysis_service [pid=10356] Analysis task interrupted (cancel) while awaiting: task_20260914_174445_smoke_pr_cde90203
+2026-09-14 17:44:58 INFO app.service.analysis_service [pid=10356] Analysis task interrupted (pause) while awaiting: task_20260914_174455_smoke_pr_b559db3f
+2026-09-14 17:45:25 ERROR app.workflow.node_runner [pid=10356] 工作流节点执行失败：task_id=task_20260914_174455_smoke_pr_b559db3f node=read_images_with_vlm
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+2026-09-14 17:45:26 ERROR app.service.analysis_service [pid=10356] Analysis task failed: task_20260914_174455_smoke_pr_b559db3f
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 493, in _run_task
+    await workflow.ainvoke(state)
+  File "D:\ProgramDev\DocMind\app\workflow\graph.py", line 91, in ainvoke
+    return await self.graph.ainvoke(state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 4090, in ainvoke
+    async for chunk in self.astream(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3440, in astream
+    async for _ in runner.atick(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 744, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 756, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 522, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\nodes\read_images_with_vlm.py", line 14, in read_images_with_vlm
+    content = await run_node(
+              ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+During task with name 'read_images_with_vlm' and id 'd6f9473c-3fa2-32af-2574-ca89c7ca6e31'
+2026-09-14 17:45:58 INFO app.service.analysis_service [pid=10356] Analysis task interrupted (pause) while awaiting: task_20260914_174555_smoke_pr2_c1e2d172
+2026-09-14 17:46:05 ERROR app.workflow.node_runner [pid=10356] 工作流节点执行失败：task_id=task_20260914_174555_smoke_pr2_c1e2d172 node=read_images_with_vlm
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+2026-09-14 17:46:05 ERROR app.service.analysis_service [pid=10356] Analysis task failed: task_20260914_174555_smoke_pr2_c1e2d172
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 493, in _run_task
+    await workflow.ainvoke(state)
+  File "D:\ProgramDev\DocMind\app\workflow\graph.py", line 91, in ainvoke
+    return await self.graph.ainvoke(state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 4090, in ainvoke
+    async for chunk in self.astream(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3440, in astream
+    async for _ in runner.atick(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 744, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 756, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 522, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\nodes\read_images_with_vlm.py", line 14, in read_images_with_vlm
+    content = await run_node(
+              ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+During task with name 'read_images_with_vlm' and id '27247385-6fa2-139c-0e37-faccd37e83c7'
+2026-09-14 17:47:26 INFO app.service.analysis_service [pid=10356] Analysis task interrupted (pause) while awaiting: task_20260914_174723_smoke_pr2_4b4f39ba
+2026-09-14 17:47:33 ERROR app.workflow.node_runner [pid=10356] 工作流节点执行失败：task_id=task_20260914_174723_smoke_pr2_4b4f39ba node=read_images_with_vlm
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+2026-09-14 17:47:33 ERROR app.service.analysis_service [pid=10356] Analysis task failed: task_20260914_174723_smoke_pr2_4b4f39ba
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 493, in _run_task
+    await workflow.ainvoke(state)
+  File "D:\ProgramDev\DocMind\app\workflow\graph.py", line 91, in ainvoke
+    return await self.graph.ainvoke(state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 4090, in ainvoke
+    async for chunk in self.astream(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3440, in astream
+    async for _ in runner.atick(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 744, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 756, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 522, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\nodes\read_images_with_vlm.py", line 14, in read_images_with_vlm
+    content = await run_node(
+              ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+During task with name 'read_images_with_vlm' and id 'c91654db-d244-0b4b-f6eb-ab3d59f9a1b8'
+2026-09-14 17:49:12 ERROR app.workflow.node_runner [pid=10356] 工作流节点执行失败：task_id=task_20260914_174907_smoke_pr2_5420271a node=read_images_with_vlm
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+2026-09-14 17:49:12 ERROR app.service.analysis_service [pid=10356] Analysis task failed: task_20260914_174907_smoke_pr2_5420271a
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 98, in map_httpcore_exceptions
+    yield
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 388, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 242, in handle_async_request
+    raise exc from None
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection_pool.py", line 224, in handle_async_request
+    response = await connection.handle_async_request(pool_request.request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\http_proxy.py", line 279, in handle_async_request
+    connect_response = await self._connection.handle_async_request(connect_request)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 94, in handle_async_request
+    raise exc
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 74, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_async\connection.py", line 117, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_backends\anyio.py", line 115, in connect_tcp
+    with map_exceptions(exc_map):
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpcore2\_exceptions.py", line 17, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1699, in request
+    response = await self._send_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1325, in _send_request
+    response = await self._send_with_auth_retry(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_client.py", line 1304, in _send_with_auth_retry
+    response = await super()._send_request(request, stream=stream, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1618, in _send_request
+    return await self._client.send(request, stream=stream, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1818, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1846, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1881, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_client.py", line 1915, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 387, in handle_async_request
+    with map_httpcore_exceptions():
+  File "C:\Users\tengzhenhui\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\httpx2\_transports\default.py", line 115, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx2.ConnectError: All connection attempts failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2179, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_legacy_response.py", line 386, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\resources\chat\completions\completions.py", line 2907, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1979, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\openai\_base_client.py", line 1734, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 493, in _run_task
+    await workflow.ainvoke(state)
+  File "D:\ProgramDev\DocMind\app\workflow\graph.py", line 91, in ainvoke
+    return await self.graph.ainvoke(state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 4090, in ainvoke
+    async for chunk in self.astream(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\main.py", line 3440, in astream
+    async for _ in runner.atick(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_runner.py", line 396, in atick
+    await arun_with_retry(
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\pregel\_retry.py", line 744, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 756, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 522, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\nodes\read_images_with_vlm.py", line 14, in read_images_with_vlm
+    content = await run_node(
+              ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\workflow\node_runner.py", line 41, in run_node
+    result = await handler()
+             ^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\service\analysis_service.py", line 881, in read_images_with_vlm
+    vlm_content = await self.deepseek.describe_images(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\app\agent\deepseek_extractor.py", line 191, in describe_images
+    response = await self.vision_chain.ainvoke(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\runnables\base.py", line 3496, in ainvoke
+    input_ = await coro_with_context(part(), context, create_task=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 511, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1888, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1846, in agenerate
+    raise exceptions[0]
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2179, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 2186, in _agenerate
+    _handle_openai_api_error(e)
+  File "D:\ProgramDev\DocMind\.venv\Lib\site-packages\langchain_openai\chat_models\base.py", line 674, in _handle_openai_api_error
+    raise OpenAIConnectionError(message=e.message, request=e.request) from e
+langchain_openai.chat_models.base.OpenAIConnectionError: Connection error.
+During task with name 'read_images_with_vlm' and id 'b338dfea-6090-61ff-9224-04dd378bf1af'
+2026-09-14 17:50:31 INFO app.logging_config [pid=16816] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:50:31 INFO app.main [pid=16816] DocMind application started
+2026-09-14 17:50:50 INFO app.service.port_normalization_service [pid=16816] 港口主数据索引就绪：6394 条记录（版本 2026-09-10T17:29:19.173259+08:00）
+2026-09-14 17:50:50 INFO app.service.analysis_service [pid=16816] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 17:51:56 INFO app.service.analysis_service [pid=16816] Analysis task interrupted (cancel) while awaiting: task_20260914_175154_smoke_pr2_8c89ea49
+2026-09-14 17:52:13 INFO app.service.analysis_service [pid=16816] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 17:53:17 INFO app.service.analysis_service [pid=16816] Analysis task interrupted (pause) while awaiting: task_20260914_175314_smoke_pr2_fd78c8a1
+2026-09-14 17:53:34 INFO app.service.analysis_service [pid=16816] 港口归一化未定论（ambiguous／原文SHANGHAI未限定具体机场，候选分别对应浦东(PVG)与虹桥(SHA)，故不选择具体三字码：SHANGHAI），字段 sfg 降级为待人工审核
+2026-09-14 17:56:34 INFO app.logging_config [pid=6580] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:57:09 INFO app.logging_config [pid=18196] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:57:09 INFO app.main [pid=18196] DocMind application started
+2026-09-14 17:57:20 INFO app.service.analysis_service [pid=18196] Analysis task interrupted (pause) while awaiting: task_20260914_175717_ui_check_4658a4e8
+2026-09-14 17:57:23 INFO app.service.analysis_service [pid=18196] Analysis task interrupted (cancel) while awaiting: task_20260914_175720_ui_check_dd3b6168
+2026-09-14 17:59:28 INFO app.main [pid=18196] DocMind application stopped
+2026-09-14 17:59:34 INFO app.logging_config [pid=1712] 系统日志已初始化：level=INFO console=False file=D:\ProgramDev\DocMind\logs\app.log
+2026-09-14 17:59:34 INFO app.main [pid=1712] DocMind application started
+2026-09-14 17:59:48 INFO app.service.analysis_service [pid=1712] Analysis task interrupted (pause) while awaiting: task_20260914_175944_B-68046_托单_c690b478
+2026-09-14 18:00:18 INFO app.service.analysis_service [pid=1712] Analysis task interrupted (cancel) while awaiting: task_20260914_175944_B-68046_托单_c690b478
+2026-09-14 18:00:49 INFO app.main [pid=1712] DocMind application stopped

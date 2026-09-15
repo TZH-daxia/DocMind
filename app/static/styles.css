@@ -346,9 +346,13 @@ select:focus {
   background: var(--red);
 }
 
-/* 已取消：中性灰，与"失败"区分开（用户主动停止，不是出错） */
+/* 已取消/已暂停：中性灰与蓝色，与"失败"区分开（用户主动操作，不是出错） */
 .status-dot.cancelled {
   background: #b6c2c9;
+}
+
+.status-dot.paused {
+  background: #6f9fd8;
 }
 
 .process-actions {
@@ -387,6 +391,12 @@ select:focus {
 .status-pill.cancelled {
   color: #5a6b73;
   background: #edf2f4;
+}
+
+/* 暂停是"可继续"的中间态，用蓝色与取消的灰色区分开 */
+.status-pill.paused {
+  color: #3b6ea5;
+  background: #e3efff;
 }
 
 .secondary-button {
@@ -646,6 +656,11 @@ select:focus {
 .result-status.cancelled {
   color: #5a6b73;
   background: #edf2f4;
+}
+
+.result-status.paused {
+  color: #3b6ea5;
+  background: #e3efff;
 }
 
 .review-note {

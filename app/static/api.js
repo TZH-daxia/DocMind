@@ -38,6 +38,20 @@ const analysisApi = {
     });
   },
 
+  // 暂停在途任务：已产出的节点保留，可继续
+  async pauseTask(taskId) {
+    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/pause`, {
+      method: "POST",
+    });
+  },
+
+  // 从暂停处继续：只跑没有产出结果的节点，已完成的步骤不重跑
+  async resumeTask(taskId) {
+    return request(`${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/resume`, {
+      method: "POST",
+    });
+  },
+
   subscribe(taskId, onMessage, onError) {
     const source = new EventSource(
       `${this.baseUrl}/tasks/${encodeURIComponent(taskId)}/events`,

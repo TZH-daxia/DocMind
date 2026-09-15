@@ -126,6 +126,38 @@ async def cancel_analysis_task(
         raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
 
 
+@router.post("/tasks/{task_id}/pause")
+async def pause_analysis_task(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """暂停一个在途任务：已产出的节点保留，可用 /resume 从断点继续。
+
+    幂等：任务已处于冻结态（终态/已暂停）时原样返回。
+    """
+
+    try:
+        return service.pause_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+
+
+@router.post("/tasks/{task_id}/resume")
+async def resume_analysis_task(
+    task_id: str,
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """从暂停处继续：只执行没有落盘产物的节点，不重跑已完成的步骤。
+
+    仅 `paused` 状态可恢复；其他状态原样返回当前快照。
+    """
+
+    try:
+        return service.resume_task(task_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="TASK_NOT_FOUND") from exc
+
+
 @router.get("/tasks/{task_id}/result")
 async def get_analysis_result(
     task_id: str,

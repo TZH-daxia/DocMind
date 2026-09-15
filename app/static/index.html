@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DocMind 文档分析台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260914b">
+  <link rel="stylesheet" href="/static/styles.css?v=20260914d">
 </head>
 <body>
   <main class="app-shell">
@@ -55,8 +55,11 @@
           </div>
           <div class="process-actions">
             <span id="selectedStatus" class="status-pill idle">未选择任务</span>
-            <button id="cancelButton" class="secondary-button cancel-button" disabled title="停止当前任务，取消后不可恢复（重跑需重新上传）">
-              停止任务
+            <button id="pauseButton" class="secondary-button" disabled title="暂停当前任务，之后可从断点继续">
+              暂停
+            </button>
+            <button id="cancelButton" class="secondary-button" disabled title="取消当前任务，取消后不可恢复（重跑需重新上传）">
+              取消任务
             </button>
           </div>
         </div>
@@ -106,9 +109,9 @@
     <div id="toast" class="toast" role="status"></div>
     <div id="resultDialogRoot"></div>
   </main>
-  <script src="/static/vendor/vue.global.prod.js?v=20260914b"></script>
-  <script src="/static/api.js?v=20260914b"></script>
-  <script src="/static/app.js?v=20260914b"></script>
-  <script type="module" src="/static/result-dialog/index.js?v=20260914b"></script>
+  <script src="/static/vendor/vue.global.prod.js?v=20260914d"></script>
+  <script src="/static/api.js?v=20260914d"></script>
+  <script src="/static/app.js?v=20260914d"></script>
+  <script type="module" src="/static/result-dialog/index.js?v=20260914d"></script>
 </body>
 </html>

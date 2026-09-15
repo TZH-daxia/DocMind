@@ -53,7 +53,7 @@ from app.service.customer_service import CustomerService
 from app.service.port_normalization_service import PortNormalizationService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.storage.file_store import FileStore
-from app.workflow.errors import TaskCancelledError
+from app.workflow.errors import TaskCancelledError, TaskPausedError
 from app.workflow.events import WorkflowEvent, WorkflowEventPublisher, now_iso
 from app.workflow.graph import AnalysisGraph, WorkflowHandlers
 from app.workflow.state import AnalysisState
@@ -108,8 +108,11 @@ CUSTOMER_VALIDATION_MESSAGES: dict[str, str] = {
     "unavailable": "客户已停用或不参与新业务，请确认",
     "skipped": "未配置客户主数据接口，无法校验委托客户",
 }
-# 终态：进入后不再被节点事件或取消请求改写，SSE 也据此结束推送
+# 终态：进入后不再被节点事件或中断请求改写，SSE 也据此结束推送
 TERMINAL_STATUSES = frozenset({"ready", "needs_review", "failed", "cancelled"})
+# 冻结态 = 终态 + 暂停：节点事件只追加时间线、不改写状态。暂停不进终态，
+# 因为它是可恢复的（SSE 需要继续保持，继续后才能接着推进度）
+FROZEN_STATUSES = TERMINAL_STATUSES | {"paused"}
 
 def _collect_boxes(index: DocumentTextIndex, needles: list[str]) -> list[LocatedBox]:
     """收集一组检索词的全部命中位置（用于"引用框"范围判定）。"""
@@ -283,6 +286,8 @@ class AnalysisService(WorkflowEventPublisher):
             "overall_confidence": None,
             "error": None,
             "last_node_event": None,
+            # 中断意图（pause/cancel）：仅用于把 asyncio 中断信号映射回用户的操作
+            "interrupt_requested": None,
         }
         self.file_store.write_json_atomic(self.file_store.task_status_path(task_id), status)
         self._append_process_event(
@@ -473,6 +478,8 @@ class AnalysisService(WorkflowEventPublisher):
             "schema_version": status.get("schema_version", "po_order.v1"),
             "context": status.get("context") or {},
         }
+        # 恢复执行：产物已在磁盘上的节点会被跳过，只跑剩下的那部分
+        state["completed_nodes"] = self._restore_state_from_disk(state)
         workflow = AnalysisGraph(
             handlers=WorkflowHandlers(
                 render_document=self.render_document,
@@ -484,16 +491,21 @@ class AnalysisService(WorkflowEventPublisher):
         )
         try:
             await workflow.ainvoke(state)
+        except TaskPausedError:
+            # 节点入口命中暂停：状态通常已由 pause_task 落盘，这里幂等收尾
+            logger.info("Analysis task paused at node boundary: %s", task_id)
+            self._park_task(task_id, "pause")
         except TaskCancelledError:
-            # 节点入口的协作式取消：状态通常已由 cancel_task 落盘，这里幂等收尾
+            # 节点入口命中取消：状态通常已由 cancel_task 落盘，这里幂等收尾
             logger.info("Analysis task cancelled at node boundary: %s", task_id)
-            self._cancel_task(task_id)
+            self._park_task(task_id, "cancel")
         except asyncio.CancelledError:
-            # 取消信号打断了模型调用/线程等待：同样收敛为 cancelled。
+            # 中断信号打断了模型调用/线程等待：按落盘的中断意图区分暂停与取消。
             # 不重抛：本任务由 start_task 独立持有、没有等待方，重抛只会让事件
             # 循环记录一条无意义的 ASGI 异常堆栈
-            logger.info("Analysis task cancelled while awaiting: %s", task_id)
-            self._cancel_task(task_id)
+            kind = self._interrupt_kind(task_id)
+            logger.info("Analysis task interrupted (%s) while awaiting: %s", kind, task_id)
+            self._park_task(task_id, kind)
         except DocumentTypeMismatchError as exc:
             # 传错文件：不是抽取问题，单独错误码，前端据此给"文件类型不符"提示
             logger.warning("Analysis task document mismatch: %s（%s）", task_id, exc)
@@ -505,6 +517,63 @@ class AnalysisService(WorkflowEventPublisher):
         except Exception as exc:
             logger.exception("Analysis task failed: %s", task_id)
             self._fail_task(task_id, exc, "ANALYSIS_FAILED")
+
+    def _restore_state_from_disk(self, state: AnalysisState) -> list[str]:
+        """按磁盘产物补齐 state，并返回已完成节点列表。
+
+        判定依据是"产物是否存在"而不是状态记录：即使记录说某节点已完成、
+        文件却已被清理，也只会重跑该节点，而不会带着半截 state 往下走。
+        节点产物的命名规则与各 handler 落盘时保持一致。
+        """
+
+        completed: list[str] = []
+        task_id = state["task_id"]
+        stem = self.file_store.source_stem(state.get("source_name"))
+        task_dir = self.file_store.root / "parsed_documents" / task_id
+
+        meta_path = task_dir / f"{stem}_render_meta.json"
+        if meta_path.exists():
+            try:
+                meta = self.file_store.read_json(meta_path)
+            except (OSError, ValueError):
+                meta = {}
+            images = [
+                str(task_dir / str(name)) for name in (meta.get("images") or [])
+            ]
+            if images:
+                state["parsed"] = {
+                    "parsed_directory": str(task_dir),
+                    "metadata_path": str(meta_path),
+                    "batch_id": None,
+                    "image_paths": images,
+                }
+                state["image_paths"] = images
+                completed.append("render_document")
+
+        vlm_path = task_dir / f"{stem}_vlm_image_content.md"
+        if vlm_path.exists():
+            try:
+                vlm_content = self.file_store.read_text(vlm_path, errors="replace")
+            except OSError:
+                vlm_content = ""
+            if vlm_content.strip():
+                state["vlm_image_content"] = vlm_content
+                completed.append("read_images_with_vlm")
+
+        candidates_path = self.file_store.candidates_path(task_id, stem)
+        if candidates_path.exists():
+            try:
+                payload = self.file_store.read_json(candidates_path)
+            except (OSError, ValueError):
+                payload = {}
+            # 候选允许为空列表（模型确实没抽出字段），文件存在即代表节点跑过
+            state["candidates"] = payload.get("candidates") or []
+            completed.append("extract_candidates")
+
+        if self.file_store.result_path(task_id).exists():
+            completed.append("build_result")
+
+        return completed
 
     def _fail_task(
         self,
@@ -550,55 +619,121 @@ class AnalysisService(WorkflowEventPublisher):
         )
 
     def cancel_task(self, task_id: str) -> dict[str, Any]:
-        """请求取消一个在途任务：先落 cancelled 状态，再中断其 asyncio 任务。
+        """取消在途任务：立即落 cancelled 并中断 asyncio 任务，不可恢复。
 
-        幂等：任务已处于终态时原样返回当前状态，不覆盖既有结果——任务可能刚好
+        幂等：任务已处于冻结态时原样返回当前状态，不覆盖既有结果——任务可能刚好
         跑完，此时取消应当让位于结果。
-
-        先落状态而不是等捕获到 CancelledError 再落，是为了让前端立刻看到"已取消"；
-        步骤本身也不可恢复，取消后如需重跑必须重新上传。
         """
 
         status = self.get_task_status(task_id)
-        if status.get("status") in TERMINAL_STATUSES:
+        if status.get("status") in FROZEN_STATUSES:
             return status
-        cancelled = self._cancel_task(task_id)
+        parked = self._park_task(task_id, "cancel")
         handle = self._running.get(task_id)
         if handle is not None:
             handle.cancel()
-        return cancelled
+        return parked
 
-    def _cancel_task(self, task_id: str, reason: str = "任务已取消，不再继续处理") -> dict[str, Any]:
-        """把任务标记为 cancelled（幂等：已是终态时不覆盖）。
+    def pause_task(self, task_id: str) -> dict[str, Any]:
+        """暂停在途任务：落 paused 并中断当前 await，已产出的节点保留可恢复。
 
-        与 _fail_task 的区别：取消是用户主动行为而非异常，因此不写 error 字段，
-        前端按"已取消"展示而不是失败卡片。
+        与取消的区别：paused 不是终态，`resume_task` 会按磁盘产物从断点继续，
+        已产出结果的节点不会重跑。
         """
 
         status = self.get_task_status(task_id)
-        if status.get("status") in TERMINAL_STATUSES:
+        if status.get("status") in FROZEN_STATUSES:
+            return status
+        parked = self._park_task(task_id, "pause")
+        handle = self._running.get(task_id)
+        if handle is not None:
+            handle.cancel()
+        return parked
+
+    def resume_task(self, task_id: str) -> dict[str, Any]:
+        """从暂停处继续：只执行没有落盘产物的节点。
+
+        仅 `paused` 可恢复，其他状态原样返回，避免对运行中/已完成的任务误触发。
+        """
+
+        status = self.get_task_status(task_id)
+        if status.get("status") != "paused":
             return status
         self._update_status(
             task_id,
-            status="cancelled",
-            progress=100,
-            current_stage="cancelled",
-            completed_at=now_iso(),
-            cancel_requested=True,
+            status="queued",
+            current_stage="queued",
+            interrupt_requested=None,
         )
         self._append_process_event(
             task_id,
-            event_type="task_cancelled",
-            message=reason,
-            stage="cancelled",
-            details={"error_code": "TASK_CANCELLED"},
+            event_type="task_resumed",
+            message="任务已恢复，将从断点继续",
+            stage="resumed",
+        )
+        self.start_task(task_id)
+        return self.get_task_status(task_id)
+
+    def _park_task(
+        self,
+        task_id: str,
+        kind: Literal["pause", "cancel"],
+    ) -> dict[str, Any]:
+        """按中断类型落盘（幂等：冻结态直接返回）。
+
+        暂停保留进度、可恢复；取消置终态、不可恢复。中断意图同时写进
+        `interrupt_requested`，供 `asyncio.CancelledError` 分支区分用户点了哪个按钮。
+        两种情况都不写 error 字段：这是用户主动行为，不是失败。
+        """
+
+        status = self.get_task_status(task_id)
+        if status.get("status") in FROZEN_STATUSES:
+            return status
+
+        if kind == "pause":
+            self._update_status(
+                task_id,
+                status="paused",
+                current_stage="paused",
+                interrupt_requested="pause",
+            )
+            event_type = "task_paused"
+            message = "任务已暂停，可从断点继续"
+        else:
+            # 不置 progress=100：取消时流程并没有跑完，进度条应停在中断的位置，
+            # 与暂停保持一致；100% 只留给真正跑完或走完全程收尾的任务
+            self._update_status(
+                task_id,
+                status="cancelled",
+                current_stage="cancelled",
+                completed_at=now_iso(),
+                interrupt_requested="cancel",
+            )
+            event_type = "task_cancelled"
+            message = "任务已取消，不再继续处理"
+
+        self._append_process_event(
+            task_id,
+            event_type=event_type,
+            message=message,
+            stage=kind,
+            details={"error_code": f"TASK_{kind.upper()}"},
         )
         return self.get_task_status(task_id)
 
-    def _raise_if_cancelled(self, task_id: str) -> None:
-        """节点入口的取消检查点：命中则抛出 TaskCancelledError 终止工作流。
+    def _interrupt_kind(self, task_id: str) -> Literal["pause", "cancel"]:
+        """读取落盘的中断意图；没有标记时按取消处理（外部取消的兜底语义）。"""
 
-        取消标志落在任务状态文件里，因此即使 asyncio 取消信号没赶上（任务正卡在
+        try:
+            status = self.get_task_status(task_id)
+        except FileNotFoundError:
+            return "cancel"
+        return "pause" if status.get("interrupt_requested") == "pause" else "cancel"
+
+    def _raise_if_interrupted(self, task_id: str) -> None:
+        """节点入口的中断检查点：暂停/取消各自抛出对应异常。
+
+        中断标志落在任务状态文件里，因此即使 asyncio 中断信号没赶上（任务正卡在
         不可取消的线程操作里），工作流也会在下一个节点边界停下，不再继续往后跑。
         """
 
@@ -606,7 +741,10 @@ class AnalysisService(WorkflowEventPublisher):
             status = self.get_task_status(task_id)
         except FileNotFoundError:
             return
-        if status.get("status") == "cancelled" or status.get("cancel_requested"):
+        requested = status.get("interrupt_requested")
+        if requested == "pause" or status.get("status") == "paused":
+            raise TaskPausedError(f"任务已暂停：{task_id}")
+        if requested == "cancel" or status.get("status") == "cancelled":
             raise TaskCancelledError(f"任务已取消：{task_id}")
 
     def publish(self, event: WorkflowEvent) -> None:
@@ -614,9 +752,9 @@ class AnalysisService(WorkflowEventPublisher):
 
         status = self.get_task_status(event.task_id)
         status["last_node_event"] = event.to_dict()
-        # 已进入终态（含用户取消）后，节点事件只追加时间线、不再改写状态：
-        # 否则正在收尾的节点会把 cancelled 覆盖回 running
-        if status.get("status") not in TERMINAL_STATUSES:
+        # 已进入冻结态（终态或暂停）后，节点事件只追加时间线、不再改写状态：
+        # 否则正在收尾的节点会把 cancelled/paused 覆盖回 running
+        if status.get("status") not in FROZEN_STATUSES:
             if event.event_type in {"started", "succeeded"}:
                 status.update(
                     {
@@ -696,7 +834,7 @@ class AnalysisService(WorkflowEventPublisher):
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
 
         task_id = state["task_id"]
-        self._raise_if_cancelled(task_id)
+        self._raise_if_interrupted(task_id)
         # LibreOffice 转换单独限流：每次转换都会拉起一个独立 soffice 进程，
         # 并发过高会拖垮机器并触发转换超时，因此与任务并发上限分开控制
         async with self._gate(
@@ -733,7 +871,7 @@ class AnalysisService(WorkflowEventPublisher):
         """读取解析图片并生成视觉理解内容（对 VLM 偶发拒答做重试）。"""
 
         task_id = state["task_id"]
-        self._raise_if_cancelled(task_id)
+        self._raise_if_interrupted(task_id)
         # 读图 + 四象限裁剪是同步 CPU/IO 操作，放进线程避免阻塞事件循环
         images = await asyncio.to_thread(
             self._load_images, state.get("image_paths", [])
@@ -782,7 +920,7 @@ class AnalysisService(WorkflowEventPublisher):
         """
 
         task_id = state["task_id"]
-        self._raise_if_cancelled(task_id)
+        self._raise_if_interrupted(task_id)
         vlm_image_content = state.get("vlm_image_content", "")
         verdict = detect_document_type(vlm_image_content)
         if verdict.blocks_extraction:
@@ -832,7 +970,7 @@ class AnalysisService(WorkflowEventPublisher):
         """按候选置信度生成最终结果：保留模型原值，低于阈值标记待人工审核。"""
 
         task_id = state["task_id"]
-        self._raise_if_cancelled(task_id)
+        self._raise_if_interrupted(task_id)
         schema_version = state.get("schema_version", "po_order.v1")
         context = state.get("context") or {}
         threshold = self.settings.review_confidence_threshold

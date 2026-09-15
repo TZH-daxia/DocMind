@@ -35,7 +35,7 @@ async def test_cancel_task_marks_running_task_cancelled(tmp_path: Path) -> None:
     """取消在途任务：状态收敛为 cancelled，且写入取消事件。"""
 
     service = make_service(tmp_path)
-    seed_task(service, "task_a", "running")
+    seed_task(service, "task_a", "running", progress=45)
 
     result = service.cancel_task("task_a")
 
@@ -44,6 +44,8 @@ async def test_cancel_task_marks_running_task_cancelled(tmp_path: Path) -> None:
     assert status["status"] == "cancelled"
     assert status["current_stage"] == "cancelled"
     assert status["completed_at"] is not None
+    # 取消不假装跑完：进度停在中断处，与暂停保持一致
+    assert status["progress"] == 45
     # 取消是用户主动行为，不写 error 字段（前端按"已取消"展示而非失败卡片）
     assert not status.get("error")
     assert any(
@@ -73,38 +75,38 @@ def test_cancel_unknown_task_raises(tmp_path: Path) -> None:
         service.cancel_task("task_missing")
 
 
-def test_raise_if_cancelled_hits_flag(tmp_path: Path) -> None:
-    """cancel_requested 落盘后，节点入口检查点立即终止工作流。"""
+def test_raise_if_interrupted_hits_cancel_flag(tmp_path: Path) -> None:
+    """cancel 中断意图落盘后，节点入口检查点立即终止工作流。"""
 
     service = make_service(tmp_path)
-    seed_task(service, "task_b", "running", cancel_requested=True)
+    seed_task(service, "task_b", "running", interrupt_requested="cancel")
 
     with pytest.raises(TaskCancelledError):
-        service._raise_if_cancelled("task_b")
+        service._raise_if_interrupted("task_b")
 
 
-def test_raise_if_cancelled_passes_normal_task(tmp_path: Path) -> None:
-    """未取消的任务正常通过检查点。"""
+def test_raise_if_interrupted_passes_normal_task(tmp_path: Path) -> None:
+    """未中断的任务正常通过检查点。"""
 
     service = make_service(tmp_path)
     seed_task(service, "task_c", "running")
 
-    service._raise_if_cancelled("task_c")
+    service._raise_if_interrupted("task_c")
 
 
-def test_raise_if_cancelled_ignores_missing_task(tmp_path: Path) -> None:
-    """状态文件缺失时不误判为取消，交由后续节点自行报错。"""
+def test_raise_if_interrupted_ignores_missing_task(tmp_path: Path) -> None:
+    """状态文件缺失时不误判为中断，交由后续节点自行报错。"""
 
     service = make_service(tmp_path)
 
-    service._raise_if_cancelled("task_none")
+    service._raise_if_interrupted("task_none")
 
 
 async def test_node_entry_stops_cancelled_task(tmp_path: Path) -> None:
-    """取消标志存在时，节点在入口即抛出，不进入 handler 主体。"""
+    """取消状态存在时，节点在入口即抛出，不进入 handler 主体。"""
 
     service = make_service(tmp_path)
-    seed_task(service, "task_d", "cancelled", cancel_requested=True)
+    seed_task(service, "task_d", "cancelled", interrupt_requested="cancel")
 
     with pytest.raises(TaskCancelledError):
         await service.build_result({"task_id": "task_d"})
