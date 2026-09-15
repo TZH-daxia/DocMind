@@ -9,7 +9,7 @@ const analysisApi = {
   async uploadFile(file, context) {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("request_id", `ui-${Date.now()}-${crypto.randomUUID()}`);
+    formData.append("request_id", generateRequestId());
     formData.append("schema_version", "po_order.v1");
     formData.append("context", JSON.stringify(context));
     formData.append("auto_start", "true");
@@ -67,6 +67,24 @@ const analysisApi = {
     return source;
   },
 };
+
+// crypto.randomUUID 仅在安全上下文（HTTPS / localhost）可用，
+// 通过局域网 IP + HTTP 访问时需降级，否则上传会中断。
+function generateRequestId() {
+  let uuid;
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    uuid = crypto.randomUUID();
+  } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    uuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } else {
+    uuid = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+  return `ui-${Date.now()}-${uuid}`;
+}
 
 async function request(url, options = {}) {
   const response = await fetch(url, options);

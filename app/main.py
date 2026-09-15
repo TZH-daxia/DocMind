@@ -5,7 +5,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_analysis_service
@@ -22,6 +24,60 @@ logger = logging.getLogger(__name__)
 
 # 周期清理间隔（小时）：启动时先清一次，之后按此间隔重复
 DATA_CLEANUP_INTERVAL_HOURS = 1.0
+
+# 接口文档（/docs）展示用的中文元数据：仅影响 OpenAPI 描述，不影响接口行为。
+API_VERSION = "0.1.0"
+API_SUMMARY = "托书结构化分析服务"
+API_DESCRIPTION = """
+## 概述
+
+**DocMind** 面向货代订单录入场景：上传托书（PDF / Word / Excel）后自动完成版面渲染、
+视觉识别、字段抽取以及港口与委托客户主数据归一化，最终产出可直接提交到 poOrder
+「订单新增」模块的结构化 JSON。
+
+## 典型流程
+
+1. `POST /analysis/tasks` 上传托书，并按需自动开始分析；
+2. `GET /analysis/tasks/{task_id}/events` 以 SSE 实时订阅分析进度；
+3. `GET /analysis/tasks/{task_id}/result` 获取结构化结果与字段级元数据；
+4. 人工核对后调用 `POST /analysis/tasks/{task_id}/submission/validate` 做提交前校验。
+
+## 运行控制
+
+任务运行过程中可暂停（`pause`）、从断点继续（`resume`）、取消（`cancel`，取消后
+不可恢复，需重新上传）。以上操作均幂等。
+
+## 通用约定
+
+- 所有业务接口统一前缀为 `/docmind`（由配置 `api_prefix` 决定，前端调用需保持一致）；
+- 任务状态取值：`queued`、`running`、`paused`、`succeeded`、`failed`、`cancelled`；
+- 任务产物默认保留 24 小时，到期自动清理；
+- 时间字段统一使用 `YYYY-MM-DD` 或 ISO 8601 字符串。
+"""
+
+TAGS_METADATA: list[dict[str, str]] = [
+    {
+        "name": "分析任务",
+        "description": "托书的上传、运行控制、进度订阅与结果查询。",
+    },
+    {
+        "name": "系统",
+        "description": "服务健康状态等运维相关接口。",
+    },
+]
+
+# Swagger UI 行为配置：默认展开分组、支持搜索过滤与「试一试」、展示请求耗时。
+SWAGGER_UI_PARAMETERS: dict[str, object] = {
+    "docExpansion": "list",
+    "defaultModelsExpandDepth": 1,
+    "defaultModelExpandDepth": 2,
+    "displayRequestDuration": True,
+    "filter": True,
+    "persistAuthorization": True,
+    "tryItOutEnabled": True,
+    "deepLinking": True,
+    "syntaxHighlight": {"theme": "monokai"},
+}
 
 
 async def _periodic_data_cleanup(service: AnalysisService, interval_hours: float) -> None:
@@ -86,7 +142,27 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         _echo(f"{settings.app_name} 已停止")
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+# 关闭框架自带的 /docs、/redoc，改用下方自定义路由注入中文描述与美化样式。
+app = FastAPI(
+    title=f"{settings.app_name} · 托书结构化分析接口",
+    summary=API_SUMMARY,
+    description=API_DESCRIPTION,
+    version=API_VERSION,
+    openapi_tags=TAGS_METADATA,
+    docs_url=None,
+    redoc_url=None,
+    swagger_ui_parameters=SWAGGER_UI_PARAMETERS,
+    lifespan=lifespan,
+)
+# 调用方（唯凯官网客服面板）部署在另一个域下，浏览器直连本服务：
+# 不放开跨域会被浏览器拦在 CORS 预检，接口即使正常也拿不到响应。
+# 不开 allow_credentials：接口不依赖 Cookie，保持最小放行面。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(analysis_router, prefix=settings.api_prefix)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -110,6 +186,34 @@ async def revalidate_static_assets(
     return response
 
 
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui_docs() -> HTMLResponse:
+    """返回自定义样式的 Swagger UI 接口文档。
+
+    用 get_swagger_ui_html 自行渲染，是为了替换默认样式表（/static/docs.css
+    在官方样式之上叠加主题），并统一中文标题与站点图标。
+    """
+
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{settings.app_name} · 接口文档",
+        swagger_css_url="/static/docs.css",
+        swagger_favicon_url="/static/docs-favicon.svg",
+        swagger_ui_parameters=SWAGGER_UI_PARAMETERS,
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc_docs() -> HTMLResponse:
+    """返回适合通读的中文接口文档（ReDoc）。"""
+
+    return get_redoc_html(
+        openapi_url=app.openapi_url or "/openapi.json",
+        title=f"{settings.app_name} · 接口文档",
+        redoc_favicon_url="/static/docs-favicon.svg",
+    )
+
+
 @app.get("/", include_in_schema=False)
 async def frontend_index() -> FileResponse:
     """返回文档分析前端页面。
@@ -124,8 +228,8 @@ async def frontend_index() -> FileResponse:
     )
 
 
-@app.get("/health", tags=["system"])
+@app.get("/health", tags=["系统"], summary="健康检查")
 async def health() -> dict[str, str]:
-    """返回服务健康状态。"""
+    """返回服务健康状态；用于探活与负载均衡检查，恒返回 `{"status": "ok"}`。"""
 
     return {"status": "ok"}

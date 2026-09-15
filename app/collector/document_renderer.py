@@ -245,6 +245,11 @@ class LocalDocumentRenderer:
                 ],
                 capture_output=True,
                 text=True,
+                # 子进程是 LibreOffice 自带 Python，实测它按系统区域编码写管道
+                # （中文 Windows 为 GBK，原始字节 b'\xcd\xd0\xca\xe9' 即“托书”），
+                # 所以这里必须沿用默认解码、不能强制 utf-8；errors="replace" 只做兜底，
+                # 保证任何意外字节都不再让读取线程抛异常、丢掉失败原因。
+                errors="replace",
                 timeout=LIBREOFFICE_TIMEOUT_SECONDS,
                 check=False,
             )
@@ -349,6 +354,13 @@ class LocalDocumentRenderer:
                 command,
                 capture_output=True,
                 text=True,
+                # soffice 本体把消息按 UTF-8 写管道，且会把源文件路径原样带进消息；
+                # 中文文件名（如 b'convert ...\xe6\x89\x98\xe4\xb9\xa6...'）按默认 GBK
+                # 解码时会让 stdout/stderr 两个读取线程各抛一次 UnicodeDecodeError
+                # —— 就是控制台里那两条 _readerthread 报错。显式按 UTF-8 解码，
+                # errors="replace" 兜底。
+                encoding="utf-8",
+                errors="replace",
                 timeout=LIBREOFFICE_TIMEOUT_SECONDS,
                 check=False,
             )

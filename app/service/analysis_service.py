@@ -621,12 +621,16 @@ class AnalysisService(WorkflowEventPublisher):
     def cancel_task(self, task_id: str) -> dict[str, Any]:
         """取消在途任务：立即落 cancelled 并中断 asyncio 任务，不可恢复。
 
-        幂等：任务已处于冻结态时原样返回当前状态，不覆盖既有结果——任务可能刚好
+        幂等：任务已是终态时原样返回当前状态，不覆盖既有结果——任务可能刚好
         跑完，此时取消应当让位于结果。
+
+        注意 paused 不在"冻结"之列：暂停只是挂起、本来就可以继续，用户完全可能
+        在暂停后决定不再继续，因此取消必须能把 paused 推进到 cancelled，
+        否则界面上的"取消"会毫无反应。
         """
 
         status = self.get_task_status(task_id)
-        if status.get("status") in FROZEN_STATUSES:
+        if status.get("status") in TERMINAL_STATUSES:
             return status
         parked = self._park_task(task_id, "cancel")
         handle = self._running.get(task_id)
@@ -687,7 +691,10 @@ class AnalysisService(WorkflowEventPublisher):
         """
 
         status = self.get_task_status(task_id)
-        if status.get("status") in FROZEN_STATUSES:
+        # 取消可以作用在 paused 上（挂起不等于冻结，见 cancel_task），只有终态才无需处理；
+        # 暂停对同一状态保持幂等，原样返回
+        frozen = TERMINAL_STATUSES if kind == "cancel" else FROZEN_STATUSES
+        if status.get("status") in frozen:
             return status
 
         if kind == "pause":

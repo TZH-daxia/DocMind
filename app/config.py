@@ -132,6 +132,22 @@ class Settings(BaseSettings):
         ge=0.0,
         validation_alias="DOCMIND_DATA_RETENTION_HOURS",
     )
+    # 允许跨域调用接口的前端来源（逗号分隔）：调用方是独立域名下的纯静态 SPA，
+    # 浏览器直连本服务，不经过网关反代，因此必须显式放行来源。
+    # 默认只放行本地前端 dev server，生产环境用
+    # DOCMIND_CORS_ALLOW_ORIGINS 追加正式站点域名
+    cors_allow_origins: str = Field(
+        default="http://localhost:3005,http://127.0.0.1:3005",
+        validation_alias="DOCMIND_CORS_ALLOW_ORIGINS",
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """拆成来源列表；过滤空项，避免配置里多余逗号导致放行失败。"""
+
+        return [
+            item.strip() for item in self.cors_allow_origins.split(",") if item.strip()
+        ]
 
 
 @lru_cache

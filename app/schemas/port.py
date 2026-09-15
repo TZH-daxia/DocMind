@@ -23,9 +23,9 @@ class PortReferenceCache(BaseModel):
 class PortCandidate(BaseModel):
     """主数据里的一个候选（多义时给模型选择、给人工审核）。"""
 
-    three_code: str
-    english_name: str = ""
-    country_code: str = ""
+    three_code: str = Field(description="港口三字码")
+    english_name: str = Field(default="", description="港口规范英文名")
+    country_code: str = Field(default="", description="所属国家/地区代码")
 
 
 class PortSuggestionInput(BaseModel):

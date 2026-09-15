@@ -27,10 +27,10 @@ class CustomerRecord(BaseModel):
 class CustomerCandidate(BaseModel):
     """命中的客户候选（多义时给人工选择）。"""
 
-    id: str
-    usr_name: str = ""
-    usr_code: str = ""
-    available: bool = True
+    id: str = Field(description="客户 ID")
+    usr_name: str = Field(default="", description="客户中文名称")
+    usr_code: str = Field(default="", description="客户编码")
+    available: bool = Field(default=True, description="是否可用于新增订单")
 
 
 class CustomerReferenceCache(BaseModel):
