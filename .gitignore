@@ -17,7 +17,9 @@ data/*
 # 本地临时检查产物
 data_preview_pdf/
 
-# 本地服务运行日志
+# 本地服务运行日志（整目录忽略：含轮转归档 app.log.<日期>，
+# 形如 app.log.2026-09-15 的后缀已不是 .log，故不能只靠 *.log）
+logs/
 server.out.log
 server.err.log
 *.log
