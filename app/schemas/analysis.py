@@ -172,18 +172,6 @@ class ValidationResult(BaseModel):
     is_valid: bool = Field(description="是否通过完整性/合法性校验")
 
 
-class SubmissionValidationRequest(BaseModel):
-    """提交前校验的请求：委托客户与始发港/目的港的当前表单值。
-
-    输入不限制形式（中文 / 英文 / 三字码 / 客户 ID），由后端统一转换为
-    提交接口需要的形态（sfg/mdg 必须是三字码、fid 必须是存在的客户 ID）。
-    """
-
-    fid: str | None = Field(default=None, description="委托客户（名称、编码或客户 ID）")
-    sfg: str | None = Field(default=None, description="始发港（中文、英文或三字码）")
-    mdg: str | None = Field(default=None, description="目的港（中文、英文或三字码）")
-
-
 class AnalysisResult(BaseModel):
     """返回给调用方的完整分析结果。"""
 

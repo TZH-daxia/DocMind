@@ -8,12 +8,13 @@ from fastapi import (
     Form,
     HTTPException,
     Path,
+    Query,
     UploadFile,
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.api.dependencies import get_analysis_service
-from app.schemas.analysis import AnalysisContext, SubmissionValidationRequest
+from app.schemas.analysis import AnalysisContext
 from app.schemas.file import UploadedDocument
 from app.service.analysis_service import AnalysisService
 
@@ -106,6 +107,48 @@ async def list_analysis_files(
     """返回已上传文件及其对应任务的状态，用于前端左侧文件列表。"""
 
     return {"items": service.list_tasks()}
+
+
+@router.get(
+    "/customers",
+    summary="搜索委托客户",
+    response_description="候选客户列表（items）与客户主数据是否可用（enabled）",
+)
+async def search_customers(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    keyword: Annotated[
+        str,
+        Query(description="搜索关键字：客户 ID / 客户编码 / 中文名 / 英文名"),
+    ],
+) -> dict[str, Any]:
+    """按关键字搜索委托客户主数据，供「准备提交」弹窗的委托客户下拉选择。
+
+    候选来自 poOrder PublicWebApi 的客户主数据（本地缓存 + TTL 增量更新）；
+    未配置客户主数据接口时 `enabled` 为 false 且 `items` 为空，前端退化为手工填写。
+    """
+
+    return await service.search_customers(keyword)
+
+
+@router.get(
+    "/ports",
+    summary="搜索港口",
+    response_description="候选港口列表（items）与港口主数据是否可用（enabled）",
+)
+async def search_ports(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    keyword: Annotated[
+        str,
+        Query(description="搜索关键字：港口三字码 / 英文港口名（如 PVG、SHANGHAI）"),
+    ],
+) -> dict[str, Any]:
+    """按关键字搜索港口主数据，供「准备提交」弹窗的始发港/目的港下拉选择。
+
+    纯本地主数据匹配（不调用模型），因此响应快；未配置港口主数据接口时
+    `enabled` 为 false 且 `items` 为空，前端退化为手工填写三字码。
+    """
+
+    return await service.search_ports(keyword)
 
 
 @router.get(
@@ -253,26 +296,6 @@ async def get_analysis_result(
         return service.get_result(task_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="RESULT_NOT_FOUND") from exc
-
-
-@router.post(
-    "/tasks/{task_id}/submission/validate",
-    summary="提交前校验",
-    response_description="始发港/目的港归一化结论与委托客户可用性判定",
-    responses=TASK_NOT_FOUND_RESPONSE,
-)
-async def validate_analysis_submission(
-    task_id: Annotated[str, Path(description="任务 ID，由创建任务接口返回")],
-    request: SubmissionValidationRequest,
-    service: Annotated[AnalysisService, Depends(get_analysis_service)],
-) -> dict[str, Any]:
-    """提交前校验：始发港/目的港转三字码 + 委托客户存在性（不发起真实提交）。
-
-    入参不限形式（中文 / 英文 / 三字码 / 客户 ID），由后端统一转换为提交接口
-    需要的形态后再返回结论。
-    """
-
-    return await service.validate_submission(task_id, request)
 
 
 @router.get(

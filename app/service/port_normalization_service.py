@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from app.agent.port_normalizer import PortNormalizationAgent
 from app.collector.port_reference_collector import PortReferenceCollector
 from app.collector.port_reference_index import (
+    MAX_CANDIDATES,
     PortReferenceIndex,
     looks_like_place,
     normalize_port_text,
@@ -131,6 +132,23 @@ class PortNormalizationService:
             await self._apply_model_suggestions(index, pending, outcomes)
         self._store_outcomes(outcomes)
         return outcomes
+
+    async def search(
+        self, keyword: str, limit: int = MAX_CANDIDATES
+    ) -> list[PortCandidate]:
+        """按关键字搜索港口候选；未启用或主数据不可用时返回空列表。
+
+        纯本地主数据匹配（不调用模型），供前端「输入即下拉」直接选三字码；
+        与 normalize 的区别：这里不做唯一性判定，也不产出 not_a_port 之类的
+        结论，只负责把候选列出来。
+        """
+
+        if not self.enabled:
+            return []
+        index = await self._get_reference_index()
+        if index is None:
+            return []
+        return index.search(keyword, limit)
 
     async def _apply_model_suggestions(
         self,

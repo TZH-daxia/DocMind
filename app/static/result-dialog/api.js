@@ -13,16 +13,16 @@ export async function fetchResult(taskId) {
   return request(`${BASE_URL}/tasks/${encodeURIComponent(taskId)}/result`);
 }
 
-// 提交前校验：港口转三字码 + 委托客户存在性（真实提交由后端后续接入）
-export async function validateSubmission(taskId, payload) {
+// 委托客户主数据搜索：供"准备提交"弹窗的委托客户下拉选择
+export async function searchCustomers(keyword) {
   return request(
-    `${BASE_URL}/tasks/${encodeURIComponent(taskId)}/submission/validate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
+    `${BASE_URL}/customers?keyword=${encodeURIComponent(keyword)}`,
   );
+}
+
+// 港口主数据搜索：供"准备提交"弹窗的始发港/目的港下拉选择三字码
+export async function searchPorts(keyword) {
+  return request(`${BASE_URL}/ports?keyword=${encodeURIComponent(keyword)}`);
 }
 
 async function request(url, options = {}) {

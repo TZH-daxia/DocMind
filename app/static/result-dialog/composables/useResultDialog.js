@@ -1,9 +1,4 @@
-import {
-  fetchResult,
-  fetchTaskStatus,
-  pageImageUrl,
-  validateSubmission,
-} from "../api.js";
+import { fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
 import {
   DATE_VALUE_PATTERN,
   FIELD_CONTROLS,
@@ -178,33 +173,6 @@ export const resultDialog = {
     const own = locationKey ? dialogState.locations[locationKey] : null;
     const fallback = fieldKey ? dialogState.locations[fieldKey] : null;
     dialogState.highlightBoxes = own?.length ? own : fallback || [];
-  },
-
-  async validateBeforeSubmit() {
-    // 提交前校验：sfg/mdg 转三字码、fid 校验客户存在性，失败原因逐字段返回
-    const result = await validateSubmission(dialogState.taskId, {
-      fid: dialogState.form.fid || "",
-      sfg: dialogState.form.sfg || "",
-      mdg: dialogState.form.mdg || "",
-    });
-    // 校验通过的值回填表单：用户输入中文/英文时后端会转换成三字码/客户 ID
-    for (const [key, value] of Object.entries(result.resolved || {})) {
-      if (value !== null && value !== undefined && value !== "") {
-        dialogState.form[key] = String(value);
-      }
-    }
-    const errors = {};
-    for (const [key, item] of Object.entries(result.fields || {})) {
-      if (!item.ok) {
-        errors[key] = item.message || "校验未通过";
-        if (item.candidates?.length) {
-          // 失败字段的候选并入候选提示，人工可以直接照着选
-          dialogState.portCandidates[key] = item.candidates;
-        }
-      }
-    }
-    dialogState.errors = errors;
-    return result;
   },
 
   submit() {

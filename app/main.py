@@ -40,7 +40,8 @@ API_DESCRIPTION = """
 1. `POST /analysis/tasks` 上传托书，并按需自动开始分析；
 2. `GET /analysis/tasks/{task_id}/events` 以 SSE 实时订阅分析进度；
 3. `GET /analysis/tasks/{task_id}/result` 获取结构化结果与字段级元数据；
-4. 人工核对后调用 `POST /analysis/tasks/{task_id}/submission/validate` 做提交前校验。
+4. 人工核对后提交（委托客户与始发港/目的港可直接从主数据下拉选取，
+   最终提交动作由调用方后续接入）。
 
 ## 运行控制
 

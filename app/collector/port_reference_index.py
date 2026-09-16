@@ -24,6 +24,8 @@ _NON_ALNUM = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff]+")
 _TOKEN_SPLIT = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff]+")
 # 三字码形态
 _THREE_CODE = re.compile(r"^[A-Za-z]{3}$")
+# 下拉搜索时"像码"的输入：纯 ASCII 字母数字（中文串不能走码前缀匹配）
+_CODE_QUERY = re.compile(r"^[0-9A-Za-z]{2,6}$")
 
 # 参与匹配的词元最短长度（单字符词元噪声太大，直接忽略）
 MIN_TOKEN_LENGTH = 2
@@ -250,6 +252,13 @@ def looks_like_place(raw_value: str) -> bool:
 # 超出部分舍弃但把真实总数带回去，由前端折叠展示
 MAX_CANDIDATES = 20
 
+# 搜索结果的匹配级别：三字码前缀 > 名称整串相等 > 名称前缀 > 名称包含。
+# 用户在下拉框里既可能敲码（PV）也可能敲城市名（SHANGHAI），两条索引都要用上。
+_RANK_NAME_EXACT = 0
+_RANK_CODE_PREFIX = 1
+_RANK_NAME_PREFIX = 2
+_RANK_NAME_CONTAINS = 3
+
 
 @dataclass(frozen=True)
 class PortLookupResult:
@@ -329,6 +338,71 @@ class PortReferenceIndex:
         if hits:
             return self._finish(hits, matched_by or "name_prefix")
         return PortLookupResult("not_found")
+
+    def search(
+        self, keyword: str, limit: int = MAX_CANDIDATES
+    ) -> list[PortCandidate]:
+        """按关键字返回候选港口（供前端「输入即下拉」选择）。
+
+        排序优先级：三字码精确 > 三字码前缀 > 名称整串相等 > 名称前缀 > 名称
+        包含；同一港口命中多条时取优先级最高的一条。与 lookup 的区别：这里只
+        负责列出候选，不做唯一性判定（选哪个由用户决定）。
+        """
+
+        text = str(keyword or "").strip()
+        key = normalize_port_text(text)
+        if not key:
+            return []
+        scored: dict[str, tuple[tuple[int, str], PortCandidate]] = {}
+        # 1) 三字码：精确直通优先（用户/调用方直接给了码）。不限定 3 位，
+        #    少数码长不一致的主数据也能被反查到
+        code_key = text.upper()
+        record = self._by_code.get(code_key)
+        if record is not None:
+            return [self._to_candidate(record)]
+        # 2) 码前缀：只对纯 ASCII 字母数字生效（中文串走名称匹配）
+        if _CODE_QUERY.match(code_key):
+            for code, record in self._by_code.items():
+                if code.startswith(code_key):
+                    self._keep(scored, self._to_candidate(record), (_RANK_CODE_PREFIX, code))
+        # 2) 名称：太短的关键字会命中一大片，单字符不参与
+        if len(key) >= MIN_TOKEN_LENGTH:
+            for name_key, records in self._by_name.items():
+                rank = self._name_rank(key, name_key)
+                if rank is None:
+                    continue
+                for record in records:
+                    self._keep(
+                        scored, self._to_candidate(record), (rank, name_key)
+                    )
+        ordered = sorted(scored.values(), key=lambda item: item[0])
+        return [candidate for _, candidate in ordered[: max(1, limit)]]
+
+    @staticmethod
+    def _name_rank(key: str, name_key: str) -> int | None:
+        """返回关键字与主数据名称的匹配级别；不匹配返回 None。"""
+
+        if name_key == key:
+            return _RANK_NAME_EXACT
+        if name_key.startswith(key):
+            return _RANK_NAME_PREFIX
+        if key in name_key:
+            return _RANK_NAME_CONTAINS
+        return None
+
+    @staticmethod
+    def _keep(
+        scored: dict[str, tuple[tuple[int, str], PortCandidate]],
+        candidate: PortCandidate,
+        score: tuple[int, str],
+    ) -> None:
+        """按三字码去重，只保留优先级更高的一条记录。"""
+
+        if not candidate.three_code:
+            return
+        current = scored.get(candidate.three_code)
+        if current is None or score < current[0]:
+            scored[candidate.three_code] = (score, candidate)
 
     def _finish(self, records: list[PortRecord], matched_by: str) -> PortLookupResult:
         unique: dict[str, PortCandidate] = {}

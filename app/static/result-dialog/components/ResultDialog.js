@@ -32,7 +32,7 @@ export const ResultDialog = {
     onFieldFocus(payload) {
       resultDialog.focusField(payload);
     },
-    async onSubmit() {
+    onSubmit() {
       const outcome = resultDialog.submit();
       if (!outcome.ok) {
         const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
@@ -45,30 +45,10 @@ export const ResultDialog = {
         this.focusRow(outcome.firstError);
         return;
       }
-      // 本地必填通过后做提交前校验：港口转三字码 + 委托客户存在性
-      // （真实提交由后端后续接入，这里只做到校验）
-      dialogState.submitting = true;
-      try {
-        const result = await resultDialog.validateBeforeSubmit();
-        if (!result.ok) {
-          const firstFailed = Object.keys(result.fields || {}).find(
-            (key) => !result.fields[key].ok,
-          );
-          const failedNames = Object.entries(result.fields || {})
-            .filter(([, item]) => !item.ok)
-            .map(([key]) => FIELD_LABELS[key] || key);
-          notify(`${failedNames.join("、")}校验未通过，请按提示修正`, "error");
-          this.focusRow(firstFailed);
-          return;
-        }
-        notify("校验通过", "success");
-        // 校验成功：收起弹窗（真实提交由后端后续接入）
-        resultDialog.close();
-      } catch (error) {
-        notify(`提交前校验失败：${error.message}`, "error");
-      } finally {
-        dialogState.submitting = false;
-      }
+      // 必填校验通过即收起弹窗；委托客户与港口已从主数据下拉选取，
+      // 值本身即有效，无需再回后端校验（真实提交由后端后续接入）
+      notify("校验通过", "success");
+      resultDialog.close();
     },
     focusRow(fieldKey) {
       if (!fieldKey) {

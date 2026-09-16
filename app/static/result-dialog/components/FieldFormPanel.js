@@ -33,7 +33,7 @@ export const FieldFormPanel = {
             type="button"
             :disabled="submitting || disabled"
             @click="$emit('submit')"
-          ><span v-if="submitting" class="doc-dialog-spinner" aria-hidden="true"></span>{{ submitting ? "校验中…" : "提交" }}</button>
+          ><span v-if="submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交</button>
         </div>
       </header>
       <div class="doc-dialog-table-wrap">

@@ -16,6 +16,13 @@ from app.schemas.customer import CustomerCandidate, CustomerRecord
 _NON_ALNUM = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff]+")
 # 包含匹配的最小长度：太短的名字（如"中"）会命中一大片客户
 MIN_CONTAINS_LENGTH = 4
+# 搜索结果上限：输入即下拉只需前若干条，避免把 1.4 万条主数据整页返回
+DEFAULT_SEARCH_LIMIT = 20
+# 匹配优先级：精确 > 前缀 > 包含 > 被包含（原文更长，如客户名带公司后缀）
+_RANK_EXACT = 0
+_RANK_PREFIX = 1
+_RANK_CONTAINS = 2
+_RANK_CONTAINED = 3
 
 
 def normalize_customer_text(text: str) -> str:
@@ -102,6 +109,61 @@ class CustomerReferenceIndex:
             if hits:
                 return self._finish(hits, f"{matched_by}_contains")
         return CustomerLookupResult("not_found")
+
+    def search(
+        self, keyword: str, limit: int = DEFAULT_SEARCH_LIMIT
+    ) -> list[CustomerCandidate]:
+        """按关键字返回候选客户（供前端「输入即下拉」选择）。
+
+        排序优先级：ID 精确 > 编码/名称/英文名精确 > 前缀 > 包含 > 被包含；
+        同级内「可用客户」优先、名称短者优先，最后按名称排序保证结果稳定。
+        同一客户命中多条时取优先级最高的一条。
+        """
+
+        text = str(keyword or "").strip()
+        key = normalize_customer_text(text)
+        if not key:
+            return []
+        # 客户 ID：下拉选中后回填的就是数字 id，用它反查展示名也走这条路径
+        if text.isdigit():
+            record = self._by_id.get(text)
+            if record is not None:
+                return [self._to_candidate(record)]
+        scored: dict[str, tuple[tuple[int, int, int, str], CustomerCandidate]] = {}
+        for index in (self._by_code, self._by_name, self._by_ename):
+            for name_key, records in index.items():
+                rank = self._match_rank(key, name_key)
+                if rank is None:
+                    continue
+                for record in records:
+                    candidate = self._to_candidate(record)
+                    score = (
+                        rank,
+                        0 if candidate.available else 1,
+                        len(name_key),
+                        name_key,
+                    )
+                    current = scored.get(candidate.id)
+                    if current is None or score < current[0]:
+                        scored[candidate.id] = (score, candidate)
+        ordered = sorted(scored.values(), key=lambda item: item[0])
+        return [candidate for _, candidate in ordered[: max(1, limit)]]
+
+    @staticmethod
+    def _match_rank(key: str, name_key: str) -> int | None:
+        """返回关键字与索引 key 的匹配级别；不匹配返回 None。"""
+
+        if name_key == key:
+            return _RANK_EXACT
+        if name_key.startswith(key):
+            return _RANK_PREFIX
+        if key in name_key:
+            return _RANK_CONTAINS
+        # 被包含：关键字比主数据更长（如客户名带 "CO.,LTD" 后缀），
+        # 需要关键字足够长才启用，否则短名会反过来命中一大片
+        if len(key) >= MIN_CONTAINS_LENGTH and name_key in key:
+            return _RANK_CONTAINED
+        return None
 
     def _finish(
         self, records: list[CustomerRecord], matched_by: str

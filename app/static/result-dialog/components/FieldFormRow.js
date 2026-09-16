@@ -1,12 +1,14 @@
+import { CUSTOMER_COMBOBOX, PORT_COMBOBOX } from "../comboboxAdapters.js";
 import { FIELD_STATUS_LABELS } from "../constants.js";
 import { DatePicker } from "./DatePicker.js";
+import { SearchCombobox } from "./SearchCombobox.js";
 
 // 候选默认展示数量：超出折叠，可展开全部
 const CANDIDATE_PREVIEW_LIMIT = 6;
 
 export const FieldFormRow = {
   name: "FieldFormRow",
-  components: { DatePicker },
+  components: { DatePicker, SearchCombobox },
   props: {
     row: { type: Object, required: true },
     form: { type: Object, required: true },
@@ -54,6 +56,10 @@ export const FieldFormRow = {
       // 点选候选 = 人工填入三字码：走"已修改"流程，候选随值非空自动消失
       this.target = item.three_code;
     },
+    selectComboboxValue(value) {
+      // 下拉回填的值（委托客户 ID / 港口三字码）交给 target 的 setter 写回表单
+      this.target = value;
+    },
     sanitizeNumber(value) {
       const digits = String(value).replace(/[^\d.]/g, "");
       if (this.row.control === "integer") {
@@ -72,6 +78,16 @@ export const FieldFormRow = {
     },
   },
   computed: {
+    // 需要"输入即搜索"下拉的控件：委托客户与始发/目的港，差别只在适配器
+    comboboxAdapter() {
+      if (this.row.control === "customer") {
+        return CUSTOMER_COMBOBOX;
+      }
+      if (this.row.control === "port") {
+        return PORT_COMBOBOX;
+      }
+      return null;
+    },
     target: {
       get() {
         if (this.row.subKey) {
@@ -231,6 +247,13 @@ export const FieldFormRow = {
           @input="onNumericInput"
           @focus="onFieldFocus"
         >
+        <SearchCombobox
+          v-else-if="comboboxAdapter"
+          :model-value="target"
+          :adapter="comboboxAdapter"
+          @update:model-value="selectComboboxValue"
+          @focus="onFieldFocus"
+        />
         <input
           v-else
           class="doc-dialog-input"

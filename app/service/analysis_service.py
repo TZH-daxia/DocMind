@@ -39,7 +39,6 @@ from app.schemas.analysis import (
     EvidenceLocation,
     FieldCandidate,
     FieldMetadata,
-    SubmissionValidationRequest,
     ValidationResult,
 )
 from app.schemas.file import UploadedDocument
@@ -95,18 +94,6 @@ PORT_REVIEW_MESSAGES: dict[str, str] = {
     "ambiguous": "港口原文对应多个候选，无法唯一确定三字码",
     "not_a_port": "港口字段内容不是地名，未做三字码归一化",
     "failed": "港口字段无法确定三字码",
-}
-# 提交前校验的失败文案（按归一化/客户校验返回的状态码）
-PORT_VALIDATION_MESSAGES: dict[str, str] = {
-    "ambiguous": "该港口对应多个三字码，请按候选选择",
-    "not_a_port": "不是具体的港口或机场（国家、地区或费用词），请输入具体港口名或三字码",
-    "failed": "无法确定为三字码，请核对后重试",
-}
-CUSTOMER_VALIDATION_MESSAGES: dict[str, str] = {
-    "ambiguous": "该名称对应多个客户，请补充完整名称",
-    "not_found": "客户不存在，请核对委托客户",
-    "unavailable": "客户已停用或不参与新业务，请确认",
-    "skipped": "未配置客户主数据接口，无法校验委托客户",
 }
 # 终态：进入后不再被节点事件或中断请求改写，SSE 也据此结束推送
 TERMINAL_STATUSES = frozenset({"ready", "needs_review", "failed", "cancelled"})
@@ -1226,100 +1213,30 @@ class AnalysisService(WorkflowEventPublisher):
                     },
                 )
 
-    async def validate_submission(
-        self,
-        task_id: str,
-        request: SubmissionValidationRequest,
-    ) -> dict[str, Any]:
-        """提交前校验：始发港/目的港转三字码 + 委托客户存在性。
+    async def search_customers(self, keyword: str) -> dict[str, Any]:
+        """按关键字搜索委托客户主数据，供前端「输入即下拉」挑选。
 
-        真实提交由调用方后续接入；本方法只负责把表单值校验/转换为提交接口
-        需要的形态（sfg/mdg 必为三字码、fid 必为存在的客户 ID），并逐字段
-        给出失败原因与候选，前端据此标出"哪个字段没过"。
+        返回 items（候选客户）与 enabled（客户主数据是否可用）；未配置主数据
+        接口时 enabled 为 False，前端退化为手工填写。
         """
 
-        fields: dict[str, dict[str, Any]] = {}
-        resolved: dict[str, Any] = {}
-
-        port_inputs = {
-            key: str(value).strip()
-            for key, value in (("sfg", request.sfg), ("mdg", request.mdg))
-            if value and str(value).strip()
-        }
-        outcomes = (
-            await self.port_service.normalize(port_inputs) if port_inputs else {}
-        )
-        for key, raw in (("sfg", request.sfg), ("mdg", request.mdg)):
-            text = str(raw or "").strip()
-            if not text:
-                fields[key] = {
-                    "ok": False,
-                    "value": None,
-                    "code": "missing",
-                    "message": "必填项，请填写",
-                    "candidates": [],
-                }
-                continue
-            outcome = outcomes.get(key)
-            if outcome and outcome.status == "normalized" and outcome.assembled:
-                resolved[key] = outcome.assembled
-                fields[key] = {
-                    "ok": True,
-                    "value": outcome.assembled,
-                    "matched_by": outcome.matched_by,
-                    "message": "",
-                    "candidates": [],
-                }
-                continue
-            code = outcome.status if outcome else "port_service_unavailable"
-            fields[key] = {
-                "ok": False,
-                "value": None,
-                "code": code,
-                "message": PORT_VALIDATION_MESSAGES.get(code, "无法确定为三字码"),
-                "candidates": [
-                    candidate.model_dump(mode="json")
-                    for candidate in (outcome.candidates if outcome else [])
-                ],
-            }
-
-        fid_text = str(request.fid or "").strip()
-        if not fid_text:
-            fields["fid"] = {
-                "ok": False,
-                "value": None,
-                "code": "missing",
-                "message": "必填项，请填写",
-                "candidates": [],
-            }
-        else:
-            customer = await self.customer_service.validate(fid_text)
-            if customer.status == "ok" and customer.customer:
-                resolved["fid"] = customer.customer.id
-                fields["fid"] = {
-                    "ok": True,
-                    "value": customer.customer.id,
-                    "matched_by": customer.matched_by,
-                    "message": "",
-                    "candidates": [],
-                }
-            else:
-                fields["fid"] = {
-                    "ok": False,
-                    "value": None,
-                    "code": customer.status,
-                    "message": CUSTOMER_VALIDATION_MESSAGES.get(
-                        customer.status, "客户校验未通过"
-                    ),
-                    "candidates": [
-                        item.model_dump(mode="json") for item in customer.candidates
-                    ],
-                }
-
+        candidates = await self.customer_service.search(keyword)
         return {
-            "ok": all(item["ok"] for item in fields.values()),
-            "resolved": resolved,
-            "fields": fields,
+            "enabled": self.customer_service.enabled,
+            "items": [item.model_dump(mode="json") for item in candidates],
+        }
+
+    async def search_ports(self, keyword: str) -> dict[str, Any]:
+        """按关键字搜索港口主数据，供前端「输入即下拉」挑三字码。
+
+        纯本地主数据匹配，不调用模型，因此响应快；返回 items（候选港口）与
+        enabled（港口主数据是否可用）。
+        """
+
+        candidates = await self.port_service.search(keyword)
+        return {
+            "enabled": self.port_service.enabled,
+            "items": [item.model_dump(mode="json") for item in candidates],
         }
 
     async def _locate_field_locations(

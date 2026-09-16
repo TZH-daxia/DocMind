@@ -33,6 +33,11 @@ export const FIELD_LABELS = {
 };
 
 export const FIELD_CONTROLS = {
+  // 委托客户从客户主数据下拉选取回填客户 ID；始发港/目的港从港口主数据下拉
+  // 选取回填三字码（见 comboboxAdapters.js 与 SearchCombobox.js）
+  fid: "customer",
+  sfg: "port",
+  mdg: "port",
   ybpiece: "integer",
   ybweight: "number",
   ybvolume: "number",

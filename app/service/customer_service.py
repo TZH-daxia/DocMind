@@ -13,9 +13,13 @@ import logging
 from datetime import datetime, timedelta
 
 from app.collector.customer_reference_collector import CustomerReferenceCollector
-from app.collector.customer_reference_index import CustomerReferenceIndex
+from app.collector.customer_reference_index import (
+    DEFAULT_SEARCH_LIMIT,
+    CustomerReferenceIndex,
+)
 from app.config import Settings
 from app.schemas.customer import (
+    CustomerCandidate,
     CustomerRecord,
     CustomerReferenceCache,
     CustomerValidationOutcome,
@@ -90,6 +94,22 @@ class CustomerService:
         return CustomerValidationOutcome(
             status="not_found", raw_value=text, reason="customer_not_found"
         )
+
+    async def search(
+        self, keyword: str, limit: int = DEFAULT_SEARCH_LIMIT
+    ) -> list[CustomerCandidate]:
+        """按关键字搜索委托客户候选；未启用或主数据不可用时返回空列表。
+
+        与 validate 的区别：这里返回的是「供人挑选的候选列表」，不做唯一性
+        判定；调用方（前端下拉）据此让用户选定一个存在的客户。
+        """
+
+        if not self.enabled:
+            return []
+        index = await self._get_index()
+        if index is None:
+            return []
+        return index.search(keyword, limit)
 
     async def _get_index(self) -> CustomerReferenceIndex | None:
         """返回客户索引；必要时拉取（首次全量，之后按 timestamp 增量）。"""
