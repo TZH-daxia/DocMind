@@ -8,11 +8,15 @@ export const FieldFormPanel = {
     form: { type: Object, required: true },
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
+    evidences: { type: Object, default: () => ({}) },
     locations: { type: Object, default: () => ({}) },
     portCandidates: { type: Object, default: () => ({}) },
     errors: { type: Object, default: () => ({}) },
     submitting: { type: Boolean, default: false },
     disabled: { type: Boolean, default: false },
+    // 数据来源标识（任务 ID）：变化时强制重建各行，避免输入框内部状态
+    // （下拉选中项、搜索词、展开态等）残留到下一个任务
+    resetKey: { type: [String, Number], default: "" },
   },
   emits: ["submit", "collapse", "field-focus"],
   template: `
@@ -44,11 +48,12 @@ export const FieldFormPanel = {
           <tbody>
             <FieldFormRow
               v-for="row in rows"
-              :key="row.id"
+              :key="resetKey + '-' + row.id"
               :row="row"
               :form="form"
               :original="original"
               :raw-values="rawValues"
+              :evidences="evidences"
               :locations="locations"
               :port-candidates="portCandidates"
               :error="errors[row.id]"

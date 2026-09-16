@@ -83,6 +83,20 @@ function collectLocations(fieldMeta) {
   return locations;
 }
 
+function collectEvidences(fieldMeta) {
+  // 待审核字段要在输入框下展示"要审核的原文"，这里把后端给的证据引用按字段收好
+  const evidences = {};
+  for (const [key, meta] of Object.entries(fieldMeta || {})) {
+    const quotes = (meta?.evidence || [])
+      .map((item) => String(item?.quote || "").trim())
+      .filter(Boolean);
+    if (quotes.length) {
+      evidences[key] = quotes;
+    }
+  }
+  return evidences;
+}
+
 function collectPortCandidates(fieldMeta) {
   // 港口转三字码失败时后端会置空字段并把候选一起下发，前端在空字段下方展示
   const candidates = {};
@@ -135,6 +149,7 @@ function applyResult(result) {
   dialogState.original = original;
   dialogState.fieldStatus = fieldStatus;
   dialogState.rawValues = rawValues;
+  dialogState.evidences = collectEvidences(meta);
   dialogState.locations = collectLocations(meta);
   dialogState.portCandidates = collectPortCandidates(meta);
   dialogState.focusedLocationKey = "";

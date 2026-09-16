@@ -1,5 +1,5 @@
 import { CUSTOMER_COMBOBOX, PORT_COMBOBOX } from "../comboboxAdapters.js";
-import { FIELD_STATUS_LABELS } from "../constants.js";
+import { FIELD_STATUS_LABELS, REVIEW_STATUSES } from "../constants.js";
 import { DatePicker } from "./DatePicker.js";
 import { SearchCombobox } from "./SearchCombobox.js";
 
@@ -14,6 +14,7 @@ export const FieldFormRow = {
     form: { type: Object, required: true },
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
+    evidences: { type: Object, default: () => ({}) },
     locations: { type: Object, default: () => ({}) },
     portCandidates: { type: Object, default: () => ({}) },
     error: { type: [Boolean, String], default: false },
@@ -26,10 +27,18 @@ export const FieldFormRow = {
       candidatesExpanded: false,
     };
   },
+  mounted() {
+    // 结果载入即按内容撑开多行输入框，不必等用户先点一下
+    this.$nextTick(() => this.autoGrowAll());
+  },
   watch: {
     // 候选变化（切换任务/重新校验）时收起展开状态
     candidates() {
       this.candidatesExpanded = false;
+    },
+    // 切换任务、后端回填等程序性改动后，多行输入框按新内容重新撑高
+    target() {
+      this.$nextTick(() => this.autoGrowAll());
     },
   },
   methods: {
@@ -39,6 +48,25 @@ export const FieldFormRow = {
     },
     onFieldFocus() {
       this.$emit("field-focus", this.focusPayload);
+    },
+    onMultilineInput(event) {
+      // 输入即撑高：内容多长就显示多长（高度算准就不会出现滚动条）
+      this.autoGrowTextarea(event.target);
+    },
+    autoGrowTextarea(el) {
+      if (!el) {
+        return;
+      }
+      // 先复位再按内容设置：否则内容变短时高度收不回来
+      el.style.height = "auto";
+      // box-sizing: border-box 下 height 不含边框，补上边框像素避免出现 1px 滚动
+      const border = el.offsetHeight - el.clientHeight;
+      el.style.height = `${el.scrollHeight + border}px`;
+    },
+    autoGrowAll() {
+      const refs = this.$refs.multilineInput;
+      const nodes = Array.isArray(refs) ? refs : refs ? [refs] : [];
+      nodes.forEach((el) => this.autoGrowTextarea(el));
     },
     togglePicker() {
       if (this.pickerOpen) {
@@ -120,6 +148,33 @@ export const FieldFormRow = {
       return this.row.control === "date"
         ? `原文：${raw}（不是标准日期，请重新选择）`
         : `原文：${raw}（不是纯数字，请重新填写）`;
+    },
+    reviewHint() {
+      // 待审核类字段：把文档原文显示在输入框下，人工核对时不必来回翻原件
+      if (!REVIEW_STATUSES.includes(this.row.status)) {
+        return "";
+      }
+      // 日期/数字控件已经用 rawHint 显示了不可渲染的原值，不重复
+      if (this.rawHint) {
+        return "";
+      }
+      const quotes = this.evidences[this.row.fieldKey] || [];
+      if (!quotes.length) {
+        return "";
+      }
+      // 冲突字段带上两处不一致的原文，正是需要人工判断的点
+      const shown =
+        quotes.length > 2
+          ? `${quotes.slice(0, 2).join(" ／ ")} …`
+          : quotes.join(" ／ ");
+      const reason =
+        this.row.status === "conflict"
+          ? "（文档中该字段有多个不一致的值，请确认）"
+          : "";
+      return `原文：${shown}${reason}`;
+    },
+    reviewTitle() {
+      return (this.evidences[this.row.fieldKey] || []).join(" ／ ");
     },
     badge() {
       if (this.row.control === "computed") {
@@ -232,9 +287,11 @@ export const FieldFormRow = {
         </div>
         <textarea
           v-else-if="row.control === 'textarea' || row.multiline"
+          ref="multilineInput"
           class="doc-dialog-input"
-          rows="2"
+          rows="1"
           v-model="target"
+          @input="onMultilineInput"
           @focus="onFieldFocus"
         ></textarea>
         <input
@@ -262,6 +319,7 @@ export const FieldFormRow = {
           @focus="onFieldFocus"
         >
         <small v-if="rawHint" class="doc-dialog-hint">{{ rawHint }}</small>
+        <small v-if="reviewHint" class="doc-dialog-hint" :title="reviewTitle">{{ reviewHint }}</small>
         <div v-if="candidates.length" class="doc-dialog-candidates">
           <span class="doc-dialog-candidates-label">候选({{ candidates.length }})</span>
           <button

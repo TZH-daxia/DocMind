@@ -53,14 +53,33 @@ read_images_with_vlm（VLM 直读页面图片，逐字转写为视觉理解文�
   ↓
 extract_candidates（DeepSeek 按 PoOrderExtraction Schema 结构化抽取 12 字段候选）
   ↓
-build_result（按候选置信度生成结果：值原样保留，低于阈值标记待人工审核）
+build_result（始发港/目的港按主数据归一化为三字码；其余字段值原样保留，
+                低于置信度阈值的标记待人工审核）
 ```
 
 渲染降级链（XLS）：LibreOffice UNO 修正导出 → LibreOffice CLI 直接转换 → 纯 Python
 合成表格图（xlrd + Pillow，零 LibreOffice 依赖）。
 
 模型抽取结果不做标准化/校验/冲突重判，仅按置信度阈值（`review_confidence_threshold`，
-默认 0.6）判定字段是否需要人工审核，避免准确结果被下游规则误过滤为空值。
+默认 0.6）判定字段是否需要人工审核，避免准确结果被下游规则误过滤为空值。唯一的例外是
+始发港/目的港：在 `build_result` 中额外按港口主数据归一化为三字码，归一化没能定论时
+把字段值置空（原文与候选留在字段元数据里）转人工核对。
+
+## 结果核对与提交
+
+分析完成后，前端弹出核对弹窗（左侧原件预览、右侧字段表单）：
+
+- **字段联动原文**：点击字段即在左侧原件上高亮其位置（坐标由服务端定位后随结果下发，
+  定位不到时标注「未定位」）；
+- **委托客户 / 始发港 / 目的港「输入即下拉」**：候选实时来自主数据缓存（见下文
+  「主数据」），选中后回填客户 ID（`fid`）或三字码（`sfg`/`mdg`）。
+  **手输内容只用于搜索，不会写入表单值**——值必须由下拉选中产生；未选中就离开输入框
+  会自动清空。系统载入的值（结果里的三字码/客户 ID）保持不变；若载入值在主数据中
+  匹配不到，输入框以琥珀色边框提示待确认，但与原文的对应关系不会丢；
+- **提交前校验只在本地**：校验 8 个必填项、日期格式（真实日历校验）与派生的
+  「预计运费总额」，不做远程校验（服务端不再提供提交校验接口）；通过后提示
+  「校验通过」并收起弹窗；
+- **真实提交**由调用方（唯凯官网客服面板）后续接入，本服务只负责产出结构化结果。
 
 ## 快速开始
 
@@ -87,13 +106,14 @@ uv run uvicorn app.main:app --port 8000 --reload
 
 | 地址 | 说明 |
 |---|---|
-| `http://127.0.0.1:8000/` | 内置分析前端（拖拽上传即自动运行、节点时间线、查看结果） |
-| `http://127.0.0.1:8000/docs` | OpenAPI 接口文档 |
+| `http://127.0.0.1:8000/` | 内置分析前端（拖拽上传即自动运行、节点时间线、核对结果并准备提交） |
+| `http://127.0.0.1:8000/docs` | Swagger UI 接口文档（中文描述 + 自定义主题） |
+| `http://127.0.0.1:8000/redoc` | ReDoc 接口文档（适合通读） |
 | `http://127.0.0.1:8000/health` | 健康检查 |
 
 ## 配置
 
-通过 `.env` 或环境变量配置（完整项见 `.env.example`），渲染与转换相关的关键项：
+通过 `.env` 或环境变量配置（完整项见 `.env.example`），渲染、转换、主数据与并发相关的关键项：
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
@@ -106,6 +126,20 @@ uv run uvicorn app.main:app --port 8000 --reload
 | `DOCMIND_LO_MAX_CONCURRENT` | `5` | 同时进行的 LibreOffice 转换数：每个转换拉起独立 `soffice` 进程（单实例约 200~400MB），不建议超过 CPU 核数，内存吃紧或转换超时时调小到 2~3 |
 | `DOCMIND_MODEL_MAX_CONCURRENT` | `8` | 同时进行的模型调用数（视觉识别 + 字段抽取），上游 429 或大面积超时时调小到 3~5 |
 | `DOCMIND_MAX_FILE_SIZE_BYTES` | `52428800`（50MB） | 单文件大小上限；校验发生在内容读入内存之后，调大会同步放大请求内存占用 |
+
+### 主数据（港口 / 委托客户）
+
+委托客户与始发港/目的港的候选都来自 poOrder `PublicWebApi` 的同一份主数据：服务端拉取后
+落盘缓存，前端"准备提交"弹窗再从缓存做"输入即下拉"搜索。`DOCMIND_PORT_API_BASE` 留空时
+港口归一化与两个下拉搜索整体停用，前端退化为手工填写。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `DOCMIND_PORT_API_BASE` | 空（停用） | `PublicWebApi` 根地址（如 `http://<host>/PublicWebApi/`）；港口三字码归一化与港口下拉搜索依赖它 |
+| `DOCMIND_CUSTOMER_API_BASE` | 空 | 委托客户主数据地址；留空回退用 `DOCMIND_PORT_API_BASE`，两者都为空时委托客户下拉搜索停用 |
+| `DOCMIND_PORT_CACHE_TTL_HOURS` | `168.0` | 港口主数据缓存有效期（小时）；重拉会连带清空归一化结论缓存 |
+| `DOCMIND_CUSTOMER_CACHE_TTL_HOURS` | `24.0` | 委托客户主数据缓存有效期（小时），过期后按 `timestamp` 水位增量更新 |
+| `DOCMIND_PORT_MODEL_TIMEOUT_SECONDS` | `8.0` | 港口识别模型硬超时（秒）：本地匹配无法定论时才调模型，超时即转人工审核 |
 
 ### 并发容量（默认参数）
 
@@ -213,7 +247,10 @@ data/
 │         └─ task_status.json / process.log 任务状态与节点事件流
 ├─ analysis_results/
 │    └─ <task_id>.json                     最终业务结果
-└─ reference_cache/                        外部主数据本地缓存（港口 hbinfo，按自身 TTL 清理）
+└─ reference_cache/                        外部主数据本地缓存（按各自 TTL 清理）
+     ├─ hbinfo.json                        港口主数据
+     ├─ port_outcomes.json                 港口归一化结论（主数据更新后整体失效）
+     └─ customers.json                     委托客户主数据
 ```
 
 > 上传原件存进各任务的 `parsed_documents/<task_id>/` 而非全局目录：托书模板常出现
@@ -227,12 +264,21 @@ data/
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST` | `/docmind/analysis/tasks` | 上传托书创建任务（multipart，默认自动开始分析） |
+| `POST` | `/docmind/analysis/tasks` | 上传托书创建任务（multipart，默认自动开始分析；`request_id` 幂等） |
 | `GET` | `/docmind/analysis/files` | 任务文件列表 |
+| `GET` | `/docmind/analysis/customers?keyword=` | 委托客户候选搜索（主数据，供核对弹窗下拉；`enabled=false` 表示未配置主数据） |
+| `GET` | `/docmind/analysis/ports?keyword=` | 港口候选搜索（三字码 / 英文名，供核对弹窗下拉） |
 | `GET` | `/docmind/analysis/tasks/{id}` | 任务状态与进度 |
 | `GET` | `/docmind/analysis/tasks/{id}/events` | SSE 实时节点事件（含历史回放，任务结束后自动关闭） |
 | `GET` | `/docmind/analysis/tasks/{id}/events/history` | 已落盘的全部节点事件（回看已完成任务） |
+| `POST` | `/docmind/analysis/tasks/{id}/pause` | 暂停在途任务（已产出节点保留，可继续） |
+| `POST` | `/docmind/analysis/tasks/{id}/resume` | 从暂停处继续（不重跑已完成节点） |
+| `POST` | `/docmind/analysis/tasks/{id}/cancel` | 取消在途任务（不可恢复，重跑需重新上传） |
 | `GET` | `/docmind/analysis/tasks/{id}/result` | 分析结果 JSON |
+| `GET` | `/docmind/analysis/tasks/{id}/pages/{page}` | 指定页的渲染图片（核对弹窗的原件预览） |
+| `GET` | `/health` | 健康检查（不带 `/docmind` 前缀） |
+
+字段级说明与响应结构以 `/docs` 为准（接口描述已全部中文化）。
 
 ### 结果结构示例
 
@@ -241,8 +287,8 @@ data/
   "task_id": "task_...",
   "schema_version": "po_order.v1",
   "result": {
-    "sfg": "SHANGHAI",
-    "mdg": "FRANKFURT",
+    "sfg": "SZX",
+    "mdg": "MEX",
     "ybpiece": 169,
     "ybweight": 3109,
     "ybvolume": 15.2,
@@ -255,26 +301,43 @@ data/
     "englishpm": "WOMEN KNITTED DRESS/WOMEN KNITTED CARDIGAN"
   },
   "overall_status": "needs_review",
-  "overall_confidence": 0.98,
+  "overall_confidence": 0.926,
+  "review_fields": ["fid", "hbrq", "inwageallinprice"],
   "field_meta": {
     "sfg": {
-      "value": "SHANGHAI",
+      "value": "SZX",
       "status": "normalized",
-      "confidence": 0.99,
-      "evidence": [{ "quote": "始发站 Airport of Departure SHANGHAI" }]
+      "confidence": 0.98,
+      "evidence": [
+        { "quote": "Airport of Departure 起运港/航空站/始发地机场" },
+        { "quote": "港口主数据：SZX SHENZHEN（原文：SZX，来源：code）" }
+      ],
+      "locations": [{ "target": "sfg", "page": 1, "bbox": [0.2349, 0.1313, 0.0255, 0.0104] }],
+      "raw_value": "SZX",
+      "candidates": [{ "three_code": "SZX", "english_name": "SHENZHEN", "country_code": "CN" }]
     },
     "hbrq": {
       "value": null,
       "status": "missing",
       "confidence": 0.0,
-      "evidence": []
+      "evidence": [],
+      "locations": [],
+      "raw_value": null,
+      "candidates": []
     }
   },
   "validation": { "is_valid": true }
 }
 ```
 
-`overall_status` 规则：必填字段缺失或低于置信度阈值 → `needs_review`；全部就绪 → `ready`。
+- `result` 是提交用的键值对：始发港/目的港是**归一化后的三字码**（归一化没能定论时为
+  `null`，原文留在 `field_meta` 的 `raw_value`）；
+- `field_meta[字段]` 是字段级元数据：`status`（`confirmed` / `normalized` / `conflict` /
+  `missing` / `invalid` / `needs_review` / `not_applicable`）、`confidence`、原文证据、
+  `locations`（归一化坐标 `[x, y, w, h]`，0~1，与图片分辨率无关，供核对弹窗在原件上高亮）、
+  `candidates`（港口归一化未定论时的候选，供下拉/芯片选择）；
+- `review_fields`：需要人工复核的字段；`overall_status` 规则为必填字段缺失或低于置信度
+  阈值 → `needs_review`，全部就绪 → `ready`，分析整体失败 → `failed`。
 
 ## 项目结构
 
@@ -283,16 +346,20 @@ main.py            服务启动入口（读取 DOCMIND_HOST/PORT/RELOAD）
 app/
   api/             FastAPI 路由（薄层：校验 → 调 Service）
   service/         业务编排 analysis_service.py
+                   customer_service.py / port_normalization_service.py 主数据缓存与候选搜索
     requirements/  输出字段清单与必填判定、context 字段回填
   workflow/        LangGraph 工作流（4 节点、事件发布、统一节点执行器）
     nodes/         render_document / read_images_with_vlm / extract_candidates / build_result
   agent/           deepseek_extractor.py（结构化抽取 + free-form 回退、VLM 调用）
+                   port_normalizer.py（港口消歧/补全）
   collector/       document_renderer.py 本地文档渲染（PDF/DOC/XLS → 页面图片）
                    lo_xls_height_fix.py LibreOffice UNO 脚本（隐藏行列展开、合并单元格行高修正）
+                   port_reference_index.py / customer_reference_index.py 主数据索引与候选搜索
+                   evidence_locator.py 字段值的原文坐标定位
   schemas/         Pydantic 模型（po_order 字段目录、analysis 候选/结果、file 上传）
   storage/         本地文件存储（data/ 三目录契约）
-  prompts/         提示词文件（视觉理解、字段抽取）
-  static/          内置前端（拖拽上传、节点时间线、历史任务回放、结果 JSON）
+  prompts/         提示词文件（视觉理解、字段抽取、港口消歧）
+  static/          内置前端（拖拽上传、节点时间线、核对弹窗与下拉选取、历史任务回放）
 data/              运行时产物（不入库，三目录契约见上文）
 ```
 
@@ -316,5 +383,10 @@ uv run mypy app          # 类型检查
 - API → Service → Storage/Collector 单向依赖；Workflow 节点通过 `WorkflowHandlers`
   回调 Service 方法，节点本身不直接触碰存储；
 - 模型输出即最终值：只做 Pydantic Schema 结构校验与置信度阈值判定，不做标准化改写、
-  字段规则过滤或冲突消解，缺失/低置信度一律交给人工审核；
+  字段规则过滤或冲突消解，缺失/低置信度一律交给人工审核。唯一例外是始发港/目的港：
+  会按港口主数据归一化为三字码，归一化无法定论时把字段置空并转人工核对，绝不采信
+  模型自创的码；
+- 主数据（港口三字码、委托客户）统一经 `app/service/*_service.py` 读取本地缓存
+  （TTL 过期后按水位增量更新）；核对弹窗的下拉候选复用同一份缓存，候选搜索纯本地、
+  不调用模型；
 - 上传即运行：不提供手动重跑入口，任务失败请重新上传文件。

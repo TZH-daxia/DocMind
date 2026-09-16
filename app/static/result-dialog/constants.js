@@ -75,10 +75,16 @@ export const REQUIRED_FIELDS = [
 ];
 
 export const FIELD_STATUS_LABELS = {
+  // conflict（文档中同一字段出现不一致的值）与 needs_review 对使用者来说是同一件事：
+  // 都要人工确认，因此合并为同一个「待审核」标记；具体原因在输入框下方说明
   needs_review: "待审核",
+  conflict: "待审核",
   missing: "缺失",
-  conflict: "冲突",
   invalid: "无效",
 };
+
+// 需要在输入框下展示"要审核的原文"的状态：与后端 review_statuses 一致
+// （missing 没有原文证据，因此天然不会命中）
+export const REVIEW_STATUSES = ["needs_review", "conflict", "invalid"];
 
 export const DATE_VALUE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

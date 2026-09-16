@@ -1404,6 +1404,14 @@ select:focus {
   border-color: var(--teal);
 }
 
+/* 多行输入框按内容自适应高度（见 FieldFormRow.autoGrowTextarea）：默认 1 行（rows="1"），
+   内容多长就撑多高，不再需要手动拖拽。overflow-y 留 auto 只作兜底：正常情况下
+   高度由脚本算准、不会出现滚动条，万一算短了也是可滚动而不是把文字裁掉 */
+textarea.doc-dialog-input {
+  resize: none;
+  overflow-y: auto;
+}
+
 .doc-dialog-input.is-computed {
   background: var(--canvas);
   color: var(--navy);

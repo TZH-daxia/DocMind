@@ -45,8 +45,10 @@ export const SearchCombobox = {
       activeIndex: -1,
       timer: null,
       requestSeq: 0,
-      // 最近一次由本组件发出的值：用于忽略自身 update 触发的回灌
-      lastEmitted: "",
+      // 最近一次由本组件发出的值：用于忽略自身 update 触发的回灌。
+      // 初值必须是 null 而非 ""：否则"切换到该字段为空的任务"时，
+      // 新值 "" 会被误判成自身回灌，跳过同步，旧值就留在输入框里了
+      lastEmitted: null,
       // 用户是否已与本组件交互过：交互后不再接受载入期的反查结果
       touched: false,
       // 输入框是否处于聚焦态：失焦后到达的搜索结果不回弹下拉
@@ -61,11 +63,15 @@ export const SearchCombobox = {
   },
   watch: {
     modelValue(value) {
-      if (String(value ?? "") === this.lastEmitted) {
+      // 只忽略"本组件自己发出去的值"回灌（lastEmitted 为 null 表示尚未发过）
+      if (this.lastEmitted !== null && String(value ?? "") === this.lastEmitted) {
         return;
       }
-      // 外部改动（加载结果、切换任务）以新值为准：重置交互状态后重新同步
+      // 外部改动（加载结果、切换任务）以新值为准：
+      // 重置交互、降级与候选状态后重新同步，避免上一个任务的残留
       this.touched = false;
+      this.degraded = false;
+      this.searchError = "";
       this.options = [];
       this.open = false;
       this.syncFromValue(value);
