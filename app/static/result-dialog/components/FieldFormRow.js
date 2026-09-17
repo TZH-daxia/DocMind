@@ -183,6 +183,11 @@ export const FieldFormRow = {
       if (this.dirty) {
         return "已修改";
       }
+      // 选填字段本来就可以为空，"缺失"不算问题：不标记，避免满屏「缺失」
+      // （后端或模型也可能漏输出该字段，前端兜底同样会给成 missing）
+      if (this.row.status === "missing" && !this.row.required) {
+        return "";
+      }
       return FIELD_STATUS_LABELS[this.row.status] || "";
     },
     badgeClass() {
