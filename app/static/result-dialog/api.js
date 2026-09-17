@@ -13,6 +13,11 @@ export async function fetchResult(taskId) {
   return request(`${BASE_URL}/tasks/${encodeURIComponent(taskId)}/result`);
 }
 
+// 最近文件列表：供弹窗头部的多文件快速切换（前端只取已解析完成的）
+export async function fetchRecentFiles() {
+  return request(`${BASE_URL}/files`);
+}
+
 // 委托客户主数据搜索：供"准备提交"弹窗的委托客户下拉选择
 export async function searchCustomers(keyword) {
   return request(

@@ -4,6 +4,8 @@ export const dialogState = reactive({
   visible: false,
   taskId: null,
   fileName: "",
+  // 弹窗头部页签条：最近已解析完成的文件 [{ taskId, name }]
+  fileTabs: [],
   taskStatus: "",
   loading: false,
   error: "",

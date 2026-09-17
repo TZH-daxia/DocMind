@@ -1,4 +1,5 @@
-import { fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
+import { fetchRecentFiles, fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
+import { loadSubmittedTaskIds, rememberSubmittedTask } from "../submittedTasks.js";
 import {
   DATE_VALUE_PATTERN,
   FIELD_CONTROLS,
@@ -9,6 +10,20 @@ import { dialogState } from "../state.js";
 import { firstErrorField, validateBeforeSubmit } from "./useSubmitValidation.js";
 
 const loadedTaskIds = new Set();
+// 头部页签条固定显示 5 个最近文件（对应设计稿 Frame 84 的 5 个页签：5×216 + 4×4 = 1096px）
+const MAX_FILE_TABS = 5;
+// 已提交成功的任务 id（localStorage 持久化）：页签条据此显示绿色 + 对号
+let submittedTaskIds = loadSubmittedTaskIds();
+// 各任务"当前表单值"的内存缓存：切走时存下、切回时恢复，支持来回对照与继续编辑。
+// 后端只保存 AI 抽取结果（提交尚未真正落库），所以用户填过的内容必须在前端留住。
+const taskForms = new Map();
+
+function rememberForm(taskId) {
+  if (!taskId) {
+    return;
+  }
+  taskForms.set(taskId, JSON.parse(JSON.stringify(dialogState.form)));
+}
 
 async function loadTask(taskId) {
   if (loadedTaskIds.has(taskId) && dialogState.taskId === taskId) {
@@ -40,7 +55,7 @@ async function loadTask(taskId) {
     if (dialogState.taskId !== taskId) {
       return;
     }
-    applyResult(result);
+    applyResult(result, taskId);
     dialogState.pageUrls = buildPageUrls(taskId, status.rendered_page_count);
     dialogState.loading = false;
     loadedTaskIds.add(taskId);
@@ -50,6 +65,38 @@ async function loadTask(taskId) {
     }
     dialogState.loading = false;
     dialogState.error = `结果加载失败：${error.message}`;
+  }
+}
+
+async function loadFileTabs(activeTaskId) {
+  try {
+    const payload = await fetchRecentFiles();
+    const completed = (payload.items || [])
+      // 只显示已解析完成的：后端按"结果文件是否已落盘"给出 result_available
+      .filter((item) => item.result_available)
+      .map((item) => ({
+        taskId: item.task_id,
+        name: item.original_name || item.task_id,
+        // 已提交成功的文件用绿色 + 对号区分（记录见 submittedTasks.js）
+        submitted: submittedTaskIds.has(String(item.task_id)),
+      }));
+    const tabs = completed.slice(0, MAX_FILE_TABS);
+    // 当前文件若不是最近 5 个（例如从左侧列表选了较早的文件），占掉最后一格：
+    // 当前项必须能在条上高亮，同时总数仍不超过 MAX_FILE_TABS
+    if (!tabs.some((tab) => tab.taskId === activeTaskId)) {
+      const current = completed.find((tab) => tab.taskId === activeTaskId);
+      if (current) {
+        if (tabs.length >= MAX_FILE_TABS) {
+          tabs[MAX_FILE_TABS - 1] = current;
+        } else {
+          tabs.push(current);
+        }
+      }
+    }
+    dialogState.fileTabs = tabs;
+  } catch {
+    // 列表拉不到就退回只显示当前文件名的形态，不阻塞弹窗
+    dialogState.fileTabs = [];
   }
 }
 
@@ -112,7 +159,7 @@ function collectPortCandidates(fieldMeta) {
   return candidates;
 }
 
-function applyResult(result) {
+function applyResult(result, taskId) {
   const values = result.result || {};
   const meta = result.field_meta || {};
   const form = {};
@@ -145,6 +192,16 @@ function applyResult(result) {
     }
     original[key] = JSON.parse(JSON.stringify(form[key]));
   }
+  // 该任务之前填过：用缓存覆盖表单值。original 仍是 AI 抽取结果，
+  // 所以"已修改"标记依然能正确指出哪些字段被人改过
+  const cachedForm = taskForms.get(taskId);
+  if (cachedForm) {
+    for (const key of FIELD_ORDER) {
+      if (key in cachedForm) {
+        form[key] = JSON.parse(JSON.stringify(cachedForm[key]));
+      }
+    }
+  }
   dialogState.form = form;
   dialogState.original = original;
   dialogState.fieldStatus = fieldStatus;
@@ -166,7 +223,35 @@ export const resultDialog = {
       return;
     }
     dialogState.visible = true;
+    // 从主页面选了另一个文件打开弹窗时，先把上一个任务填过的内容存下来
+    if (dialogState.taskId && dialogState.taskId !== taskId) {
+      rememberForm(dialogState.taskId);
+    }
+    // 页签条与当前任务并行加载，避免串行等待
+    await Promise.all([loadFileTabs(taskId), loadTask(taskId)]);
+  },
+
+  async switchTask(taskId) {
+    if (!taskId || taskId === dialogState.taskId) {
+      return;
+    }
+    // 切换不再丢改动：先把当前任务填过的内容存起来，切回来会原样恢复，
+    // 因此不再弹"将丢弃"确认框，来回对照两个文件也不会被打断
+    rememberForm(dialogState.taskId);
     await loadTask(taskId);
+  },
+
+  // 提交成功后标记该文件：页签条立刻变绿（并持久化，刷新后仍在）
+  markSubmitted(taskId) {
+    if (!taskId) {
+      return;
+    }
+    submittedTaskIds = rememberSubmittedTask(taskId);
+    dialogState.fileTabs = dialogState.fileTabs.map((tab) =>
+      tab.taskId === taskId ? { ...tab, submitted: true } : tab,
+    );
+    // 提交成功后把当前内容也存一份：切走再切回来仍是提交时的样子
+    rememberForm(taskId);
   },
 
   close() {

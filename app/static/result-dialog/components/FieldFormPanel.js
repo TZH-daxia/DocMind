@@ -12,33 +12,18 @@ export const FieldFormPanel = {
     locations: { type: Object, default: () => ({}) },
     portCandidates: { type: Object, default: () => ({}) },
     errors: { type: Object, default: () => ({}) },
-    submitting: { type: Boolean, default: false },
     disabled: { type: Boolean, default: false },
     // 数据来源标识（任务 ID）：变化时强制重建各行，避免输入框内部状态
     // （下拉选中项、搜索词、展开态等）残留到下一个任务
     resetKey: { type: [String, Number], default: "" },
   },
-  emits: ["submit", "collapse", "field-focus"],
+  // 收起/提交已移到弹窗右上角，本组件只上报字段聚焦
+  emits: ["field-focus"],
   template: `
     <section class="doc-dialog-form" :class="{ 'is-disabled': disabled }">
+      <!-- 列头只留栏目名：标题文案去掉，收起/提交按钮在弹窗右上角 -->
       <header class="doc-dialog-form-head">
-        <div>
-          <span class="doc-dialog-eyebrow">EXTRACTED FIELDS</span>
-          <strong>分析结果</strong>
-        </div>
-        <div class="doc-dialog-form-actions">
-          <button
-            class="doc-dialog-collapse"
-            type="button"
-            @click="$emit('collapse')"
-          >收起</button>
-          <button
-            class="doc-dialog-submit"
-            type="button"
-            :disabled="submitting || disabled"
-            @click="$emit('submit')"
-          ><span v-if="submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交</button>
-        </div>
+        <span class="doc-dialog-eyebrow">EXTRACTED FIELDS</span>
       </header>
       <div class="doc-dialog-table-wrap">
         <table class="doc-dialog-table">

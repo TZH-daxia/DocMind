@@ -799,6 +799,9 @@ select:focus {
 
 /* ---- 结果弹窗：左侧原件预览 + 右侧字段表单（Vue 3 渲染） ---- */
 .doc-dialog-mask {
+  /* 两栏列头的统一高度：左「源文件」/ 右「EXTRACTED FIELDS」共用，分割线才会对齐 */
+  --doc-head-h: 52px;
+
   position: fixed;
   inset: 0;
   z-index: 40;
@@ -822,17 +825,57 @@ select:focus {
 
 .doc-dialog-head {
   display: flex;
+  flex-direction: row;
+  /* 右上角的收起/提交在整块列头里上下居中 */
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 15px 20px;
+  /* 底部不留内边距：页签条要贴住内容区的分隔线 */
+  padding: 15px 20px 0;
   border-bottom: 1px solid var(--line);
 }
 
+/* 左半：栏目标题 + 最近文件页签条（纵向排列，向下拉伸使页签贴住分隔线） */
+.doc-dialog-head-main {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .doc-dialog-head h1 {
-  margin: 4px 0 0;
+  margin: 0 0 12px;
   font-size: 16px;
   color: var(--navy);
+}
+
+.doc-dialog-head-title {
+  /* 眉标在左、任务号水平居中：左右各占一列等比空间，中间列自然落在中线上 */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 此处标题为 14px/加粗、不沿用全局的 10px 大写小标（颜色统一取全局的黑色） */
+.doc-dialog-head-title .doc-dialog-eyebrow {
+  justify-self: start;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 任务号水平居中，不因过长换行，超出省略 */
+.doc-dialog-head-title .doc-dialog-task {
+  min-width: 0;
+  max-width: 340px;
+  justify-self: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .doc-dialog-task {
@@ -841,11 +884,122 @@ select:focus {
   word-break: break-all;
 }
 
+/* 最近文件页签条：等宽等高、间距 4px、超出横向滚动 */
+.doc-file-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  /* 选中项盖住下方分隔线，做成贴底页签 */
+  margin-bottom: -1px;
+  overflow-x: auto;
+}
+
+.doc-file-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.doc-file-tabs::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+.doc-file-tab {
+  /* 紧凑等宽：默认 200px，窗口变窄时等比收窄（到 150px 下限后转横向滚动） */
+  flex: 0 1 200px;
+  min-width: 150px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 与对号之间的间距由文件名自身的 padding-left 提供（对齐设计稿 Frame 75/85） */
+  gap: 0;
+  padding: 8px 12px 8px 8px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, rgba(59, 133, 251, 0.2) 0%, rgba(99, 159, 255, 0.2) 100%);
+  color: #3b85fb;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.doc-file-tab:hover {
+  background: linear-gradient(90deg, rgba(59, 133, 251, 0.32) 0%, rgba(99, 159, 255, 0.32) 100%);
+}
+
+.doc-file-tab.is-active {
+  background: linear-gradient(90deg, #3b85fb 0%, #639fff 100%);
+  color: #ffffff;
+}
+
+/* ---- 提交成功的页签：浅绿（未选中）/ 深绿（选中），与蓝色的两态一一对应 ---- */
+.doc-file-tab.is-submitted {
+  background: linear-gradient(90deg, rgba(22, 177, 52, 0.2) 0%, rgba(15, 192, 49, 0.2) 100%);
+  color: #16b134;
+}
+
+.doc-file-tab.is-submitted:hover {
+  background: linear-gradient(90deg, rgba(22, 177, 52, 0.32) 0%, rgba(15, 192, 49, 0.32) 100%);
+}
+
+.doc-file-tab.is-submitted.is-active {
+  background: linear-gradient(90deg, #16b134 0%, #0fc031 100%);
+  color: #ffffff;
+}
+
+/* 提交成功的对号（只有该状态带）：未选中绿圆白勾，选中白圆绿勾 */
+.doc-file-tab-icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+
+.doc-file-tab-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.doc-file-tab-icon circle {
+  fill: #16b134;
+}
+
+.doc-file-tab-icon path {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.doc-file-tab.is-active .doc-file-tab-icon circle {
+  fill: #ffffff;
+}
+
+.doc-file-tab.is-active .doc-file-tab-icon path {
+  stroke: #16b134;
+}
+
+/* 文件名锁在页签内：无对号时可用 200−8−12−4 = 176px，带对号时再让出 20px，
+   一律单行省略，永不越界 */
+.doc-file-tab-name {
+  display: block;
+  width: 100%;
+  padding-left: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .doc-dialog-eyebrow {
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--teal);
+  color: #000000;
 }
 
 .doc-dialog-body {
@@ -874,21 +1028,11 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 11px 18px;
+  /* 固定列头高度（--doc-head-h）：右栏列头底部与左栏源文件栏严格对齐 */
+  height: var(--doc-head-h, 52px);
+  padding: 0 18px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
-}
-
-/* 左栏标题只剩一行小字，保持与右栏标题同高，两块面板顶部才对齐 */
-.doc-dialog-preview-head {
-  min-height: 52px;
-}
-
-.doc-dialog-form-head strong {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--navy);
 }
 
 .doc-dialog-preview-head small {
@@ -1053,20 +1197,37 @@ select:focus {
   color: var(--teal);
 }
 
-.doc-dialog-form-actions {
+/* 列头右侧操作区：收起 + 提交，由列头的 align-items: center 上下居中 */
+.doc-dialog-head-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
 }
 
+/* 「收起」与「提交」尺寸完全一致：76×36、14px/500、圆角 8px，只有配色区分主次。
+   宽度用 min-width 兜底，不同字体渲染下也保持等宽 */
+.doc-dialog-collapse,
+.doc-dialog-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 76px;
+  height: 36px;
+  padding: 8px 24px;
+  border-radius: 8px;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+/* 次要操作：白底描边 */
 .doc-dialog-collapse {
-  padding: 8px 16px;
   border: 1px solid var(--line);
-  border-radius: 5px;
   background: var(--surface);
   color: var(--navy);
-  font-size: 12px;
 }
 
 .doc-dialog-collapse:hover {
@@ -1236,21 +1397,18 @@ select:focus {
   color: var(--teal);
 }
 
+/* 主操作：设计稿 #DD9E4C 琥珀实心（尺寸见上方与「收起」共用的那段） */
 .doc-dialog-submit {
-  padding: 8px 18px;
-  border: 1px solid var(--teal);
-  border-radius: 5px;
-  background: var(--teal);
-  color: var(--surface);
-  font-size: 12px;
+  border: none;
+  background: #dd9e4c;
+  color: #ffffff;
 }
 
-.doc-dialog-submit {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.doc-dialog-submit:hover:not(:disabled) {
+  background: #cf8f3f;
 }
 
+.doc-dialog-collapse:disabled,
 .doc-dialog-submit:disabled {
   opacity: 0.55;
   cursor: not-allowed;
