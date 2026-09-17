@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import mimetypes
+import re
+from collections import Counter
 from collections.abc import AsyncIterator
 from datetime import datetime
 from pathlib import Path
@@ -149,6 +151,141 @@ def _value_needles(value: str, quotes: list[str]) -> list[str]:
     """值类字段的检索词优先级：引用派生的带上下文片段 → 裸值。"""
 
     return [*context_needles(value, quotes), value]
+
+
+def _match_boxes(index: DocumentTextIndex, needles: list[str]) -> list[LocatedBox]:
+    """按可信度顺序返回检索词命中的全部候选框（供多命中时二次挑选）。
+
+    与 _pick_box 的检索顺序一致：同一个检索词先做词级精确匹配，再做子串匹配；
+    取第一个有命中的检索词的全部命中处。
+    """
+
+    for needle in needles:
+        if not needle:
+            continue
+        for searcher in (index.search_word, index.search):
+            matches = searcher(needle)
+            if matches:
+                return matches
+    return []
+
+
+def _fallback_segments(quotes: list[str], value_text: str) -> list[str]:
+    """兜底定位用的引用片段顺序：先"能由值解释"的片段，再无数字的标签，最后其它。
+
+    值被归一化改写后的字段（日期值 `2024-07-25` vs 原文 `7月25日`）只能靠引用片段
+    定位，而引用里可能同时带着"年份来源"这类参考信息（如落款 `Date 日期：2024.7.19`）
+    ——仅按长度取最长会把高亮打到那个参考日期上。这里要求片段里的数字全部出现在值的
+    数字里（多重集包含）：`7月25日`(725) 能由 `2024-07-25` 解释而命中，`2024.7.19`
+    （含值里没有的 1、9）落选。同级内长者优先，跨引用时靠前的引用（主证据）优先。
+    """
+
+    value_digits = Counter(char for char in value_text if char.isdigit())
+    ranked: list[tuple[int, int, int, str]] = []
+    for quote_index, quote in enumerate(quotes):
+        for segment in quote_segments([quote]):
+            digits = [char for char in segment if char.isdigit()]
+            if digits and Counter(digits) <= value_digits:
+                rank = 0
+            elif not digits:
+                rank = 1
+            else:
+                rank = 2
+            ranked.append((rank, -len(segment), quote_index, segment))
+    ordered: list[str] = []
+    for _, _, _, segment in sorted(ranked):
+        if segment not in ordered:
+            ordered.append(segment)
+    return ordered
+
+
+# 参与人子项与同块其它子项的最大纵向偏差（归一化页高）：超过即判定为别处的同文
+PARTY_BLOCK_TOLERANCE = 0.1
+
+# 参与人公司名尾部的中文对照名：文档里常见"英文名（中文名）"写法，如
+# "Xinchang Pace Bearing Parts Co., Ltd（新昌沛斯轴承配件有限公司）"，中文名是同一
+# 主体的对照名、不属于公司名本身。括号内要求是纯中文，含拉丁字母或数字的括号内容
+# 一律不动（可能是公司名的一部分），避免误删。
+PARTY_NAME_ALIAS_PATTERN = re.compile(
+    r"[\s,，、]*[（(]\s*([\u4e00-\u9fff·]{2,})\s*[）)]$"
+)
+LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
+
+
+def _strip_party_name_alias(name: str) -> str:
+    """剔除公司名尾部的中文对照名（括号包裹）。
+
+    只在"含拉丁字母的公司名 + 纯中文括号"这种形式下剥离；纯中文公司名、括号内
+    混有拉丁字母或数字的原样返回——宁可留下对照名，也不误删公司名本身。
+    """
+
+    text = str(name or "").strip()
+    match = PARTY_NAME_ALIAS_PATTERN.search(text)
+    if match is None:
+        return text
+    head = text[: match.start()].strip(" \t,，、")
+    if not head or LATIN_LETTER_PATTERN.search(head) is None:
+        return text
+    return head
+
+
+def _strip_party_name_aliases(
+    result: dict[str, Any], field_meta: dict[str, FieldMetadata]
+) -> None:
+    """就地剔除参与人（发货人/收货人）公司名里的中文对照名。
+
+    模型按"地址块第一行"取公司名，会把同一行里的中文对照名一起带上，这里统一清理
+    结果值与字段元数据。evidence 引用保持原文整行不改动，人工仍能在原件预览里看到
+    完整写法；引用未被改写，定位逻辑仍按清理后的名称计算高亮框。
+    """
+
+    for field_key, meta in field_meta.items():
+        value = meta.value
+        if not isinstance(value, dict):
+            continue
+        name = value.get("name")
+        if not isinstance(name, str):
+            continue
+        cleaned = _strip_party_name_alias(name)
+        if cleaned == name:
+            continue
+        updated = {**value, "name": cleaned}
+        field_meta[field_key] = meta.model_copy(update={"value": updated})
+        result[field_key] = updated
+
+
+def _align_party_boxes(
+    sub_boxes: dict[str, LocatedBox],
+    sub_options: dict[str, list[LocatedBox]],
+) -> None:
+    """校正参与人子项位置：明显脱离整块区域的那一项，改取最靠近其它子项的一处。
+
+    同一段文字在文档里常出现多次——通知人栏会重复收货人的邮箱、底部「委托代理」
+    栏会重复发货人的公司名，而它们的分栏文字也互相邻近，仅靠"邻近证据锚点"挑选
+    容易选到别处。这里以同块其它子项的位置为准做一次一致性校正：只改动明显离散
+    的那一项，已经对齐的项不受影响。
+    """
+
+    for sub_key, box in list(sub_boxes.items()):
+        others = [
+            item
+            for key, item in sub_boxes.items()
+            if key != sub_key and item.page == box.page
+        ]
+        if not others:
+            continue
+        nearest = min(abs(item.bbox[1] - box.bbox[1]) for item in others)
+        if nearest <= PARTY_BLOCK_TOLERANCE:
+            continue
+        options = [
+            item for item in sub_options.get(sub_key, []) if item.page == others[0].page
+        ]
+        if not options:
+            continue
+        sub_boxes[sub_key] = min(
+            options,
+            key=lambda item: min(abs(other.bbox[1] - item.bbox[1]) for other in others),
+        )
 
 
 def _union_boxes(boxes: list[LocatedBox]) -> LocatedBox | None:
@@ -1043,6 +1180,10 @@ class AnalysisService(WorkflowEventPublisher):
             task_id=task_id,
         )
 
+        # 参与人公司名剔除中文对照名（详见 _strip_party_name_aliases）：
+        # 放在定位之前，使高亮框按清理后的名称计算
+        _strip_party_name_aliases(result, field_meta)
+
         # 把字段值映射回源 PDF 坐标（供前端原件预览高亮），失败不影响结果产出
         await self._locate_field_locations(
             field_meta,
@@ -1332,15 +1473,19 @@ class AnalysisService(WorkflowEventPublisher):
                 # "名称定位到了、地址却未定位"这种同块内自相矛盾的状态。
                 # 空值子项不产出定位（前端也不会有标记）。
                 sub_boxes: dict[str, LocatedBox] = {}
+                sub_options: dict[str, list[LocatedBox]] = {}
                 for sub_key in PARTY_KEYS:
                     sub_value = effective.get(sub_key)
                     if not sub_value:
                         continue
-                    box = _pick_box(
-                        index, _value_needles(str(sub_value), quotes), anchor_boxes
-                    )
+                    needles = _value_needles(str(sub_value), quotes)
+                    sub_options[sub_key] = _match_boxes(index, needles)
+                    box = _pick_box(index, needles, anchor_boxes)
                     if box is not None:
                         sub_boxes[sub_key] = box
+                # 同文在别处重复出现（通知人栏重写收货人邮箱、底部委托代理栏重写
+                # 发货人公司名）时，按同块其它子项的位置做一次一致性校正
+                _align_party_boxes(sub_boxes, sub_options)
                 region_box = _union_boxes(
                     [*sub_boxes.values(), *quote_boxes]
                 )
@@ -1376,6 +1521,19 @@ class AnalysisService(WorkflowEventPublisher):
                         bbox=list(quote_boxes[0].bbox),
                     )
                 ]
+            else:
+                # 连整条引用都匹配不上时（标签与值被其它单元格/换行打断），退到
+                # 引用切出的片段：日期字段的值会被归一化成 YYYY-MM-DD，文档里往往
+                # 只有"7月25日"这种写法，而它正是引用片段，此前只用于收窄多命中。
+                # 片段排序见 _fallback_segments（要能由值解释，避免打到年份参考日期）；
+                # 片段必须能唯一定位才采纳（不传锚点），宁可不标也不标错。
+                box = _pick_box(
+                    index, _fallback_segments(quotes, " ".join(values)), []
+                )
+                if box is not None:
+                    located[key] = [
+                        EvidenceLocation(target=key, page=box.page, bbox=list(box.bbox))
+                    ]
         return located
 
     def _load_images(self, paths: list[str]) -> list[ImageInput]:

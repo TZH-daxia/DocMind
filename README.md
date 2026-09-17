@@ -53,17 +53,20 @@ read_images_with_vlm（VLM 直读页面图片，逐字转写为视觉理解文�
   ↓
 extract_candidates（DeepSeek 按 PoOrderExtraction Schema 结构化抽取 12 字段候选）
   ↓
-build_result（始发港/目的港按主数据归一化为三字码；其余字段值原样保留，
-                低于置信度阈值的标记待人工审核）
+build_result（始发港/目的港按主数据归一化为三字码；发货人/收货人名称剔除中文对照名；
+                其余字段值原样保留，低于置信度阈值的标记待人工审核）
 ```
 
 渲染降级链（XLS）：LibreOffice UNO 修正导出 → LibreOffice CLI 直接转换 → 纯 Python
 合成表格图（xlrd + Pillow，零 LibreOffice 依赖）。
 
 模型抽取结果不做标准化/校验/冲突重判，仅按置信度阈值（`review_confidence_threshold`，
-默认 0.6）判定字段是否需要人工审核，避免准确结果被下游规则误过滤为空值。唯一的例外是
-始发港/目的港：在 `build_result` 中额外按港口主数据归一化为三字码，归一化没能定论时
-把字段值置空（原文与候选留在字段元数据里）转人工核对。
+默认 0.6）判定字段是否需要人工审核，避免准确结果被下游规则误过滤为空值。例外只有两处，
+都在 `build_result` 中、且都只删不加：其一，始发港/目的港按港口主数据归一化为三字码，
+归一化没能定论时把字段值置空（原文与候选留在字段元数据里）转人工核对；其二，发货人/
+收货人的公司名剔除紧跟其后的括号中文对照名（如 `Xinchang Pace Bearing Parts Co., Ltd
+（新昌沛斯轴承配件有限公司）` → `Xinchang Pace Bearing Parts Co., Ltd`），纯中文公司名与
+括号内混有拉丁字母或数字的一律保留，`evidence` 引用保持原文不改写。
 
 ## 结果核对与提交
 
