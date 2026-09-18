@@ -54,17 +54,24 @@ const elements = {
   toast: document.querySelector("#toast"),
 };
 
-// 失败原因分类：标题与列表短标按后端下发的错误码映射，正文直接用 error.message
+// 失败原因分类：标题与列表短标按后端下发的错误码映射，正文直接用 error.message。
+// DOCUMENT_TYPE_MISMATCH（类型守卫提前拦下）与 EMPTY_EXTRACTION（守卫放过、模型又抽
+// 不出字段）对用户是同一件事——上传的不是空运托书，因此两种码共用同一套文案，避免
+// 同一原因在界面上出现两种说法。
+const NOT_BOOKING_TITLE = "不是空运托书文件";
+const NOT_BOOKING_SHORT_LABEL = "非托书文件";
+const NOT_BOOKING_BODY =
+  "该文件不像空运托书：未识别到托运人、起讫港、件数等关键内容，请重新上传空运托书/托单（Booking）文件";
 const ERROR_TITLES = {
-  DOCUMENT_TYPE_MISMATCH: "不是空运托书文件",
-  EMPTY_EXTRACTION: "未识别到托书内容",
+  DOCUMENT_TYPE_MISMATCH: NOT_BOOKING_TITLE,
+  EMPTY_EXTRACTION: NOT_BOOKING_TITLE,
   VLM_VISION_UNAVAILABLE: "图片识别失败",
   TASK_INTERRUPTED: "任务被中断",
   ANALYSIS_FAILED: "分析失败",
 };
 const ERROR_SHORT_LABELS = {
-  DOCUMENT_TYPE_MISMATCH: "非托书文件",
-  EMPTY_EXTRACTION: "未识别内容",
+  DOCUMENT_TYPE_MISMATCH: NOT_BOOKING_SHORT_LABEL,
+  EMPTY_EXTRACTION: NOT_BOOKING_SHORT_LABEL,
   VLM_VISION_UNAVAILABLE: "识别失败",
   TASK_INTERRUPTED: "已中断",
   ANALYSIS_FAILED: "分析失败",
@@ -72,10 +79,8 @@ const ERROR_SHORT_LABELS = {
 // 已知错误码的固定正文（优先于后端 message）：历史任务的 error 里存的可能还是
 // 技术文案，这里覆盖掉，保证界面上永远是面向用户的说法
 const ERROR_BODIES = {
-  DOCUMENT_TYPE_MISMATCH:
-    "该文件不像空运托书：未识别到托运人、起讫港、件数等关键内容，请重新上传空运托书/托单（Booking）文件",
-  EMPTY_EXTRACTION:
-    "没有从文件中识别出任何托书字段，请确认上传的是空运托书/托单（Booking）文件后重新上传",
+  DOCUMENT_TYPE_MISMATCH: NOT_BOOKING_BODY,
+  EMPTY_EXTRACTION: NOT_BOOKING_BODY,
 };
 const nodeRows = new Map();
 const displayedStates = new Map();

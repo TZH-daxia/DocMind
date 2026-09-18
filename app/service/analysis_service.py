@@ -79,17 +79,19 @@ VLM_MIN_CONTENT_CHARS = 200
 VLM_MAX_ATTEMPTS = 3
 # VLM 拒答重试前的退避基数（第 n 次重试等待 n × 基数秒）
 VLM_RETRY_BACKOFF_SECONDS = 2.0
-# 失败事件文案：让事件时间线也能说清原因，未列举的错误码用兜底文案
+# 失败事件文案：让事件时间线也能说清原因，未列举的错误码用兜底文案。
+# DOCUMENT_TYPE_MISMATCH（类型守卫提前拦下）与 EMPTY_EXTRACTION（守卫放过、模型又抽
+# 不出字段）对用户是同一件事——上传的不是空运托书，因此两种码共用同一套文案，避免
+# 同一原因在界面上出现两种说法；技术区分保留在 error.code 与 error.detail 里。
+NOT_BOOKING_EVENT_MESSAGE = "文件不像空运托书，未识别到托书字段"
 FAILURE_EVENT_MESSAGES: dict[str, str] = {
-    "DOCUMENT_TYPE_MISMATCH": "文件不像空运托书，已停止字段抽取",
-    "EMPTY_EXTRACTION": "未能从文件中抽取到任何托书字段",
+    "DOCUMENT_TYPE_MISMATCH": NOT_BOOKING_EVENT_MESSAGE,
+    "EMPTY_EXTRACTION": NOT_BOOKING_EVENT_MESSAGE,
 }
 # 面向用户的失败说明：技术细节（异常原文）改放 error.detail，前端只展示这条
 FAILURE_USER_MESSAGES: dict[str, str] = {
-    "EMPTY_EXTRACTION": (
-        "没有从文件中识别出任何托书字段，请确认上传的是空运托书/托单（Booking）"
-        "文件后重新上传"
-    ),
+    "DOCUMENT_TYPE_MISMATCH": MISMATCH_MESSAGE,
+    "EMPTY_EXTRACTION": MISMATCH_MESSAGE,
 }
 # 港口归一化未能定论时的事件文案（按归一化服务给出的状态区分）
 PORT_REVIEW_MESSAGES: dict[str, str] = {

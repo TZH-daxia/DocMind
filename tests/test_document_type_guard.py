@@ -9,12 +9,17 @@ import pytest
 from app.agent.deepseek_extractor import EmptyExtractionError
 from app.collector.document_type_guard import (
     MIN_CONTENT_CHARS,
+    MISMATCH_MESSAGE,
     DocumentTypeMismatchError,
     build_content_hint,
     detect_document_type,
 )
 from app.config import Settings
-from app.service.analysis_service import AnalysisService
+from app.service.analysis_service import (
+    FAILURE_EVENT_MESSAGES,
+    FAILURE_USER_MESSAGES,
+    AnalysisService,
+)
 
 # 真实失败样本：任务 task_20260911_131239_11_dc7d1c61 上传的 Python 项目规范文档
 SPEC_DOCUMENT_CONTENT = """
@@ -200,3 +205,22 @@ def test_list_tasks_tolerates_missing_error(tmp_path: Path) -> None:
 
     assert items[0]["error_code"] is None
     assert items[0]["error_message"] is None
+
+
+def test_not_booking_error_messages_are_unified() -> None:
+    """两种错误码对用户是同一件事，提示文案必须一致。
+
+    守卫拦下（DOCUMENT_TYPE_MISMATCH）与守卫放过但模型抽不出字段
+    （EMPTY_EXTRACTION）都是"上传的不是托书"，界面上不该出现两种说法；
+    技术区分只保留在 error.code 与 error.detail 里。
+    """
+
+    assert (
+        FAILURE_USER_MESSAGES["DOCUMENT_TYPE_MISMATCH"]
+        == FAILURE_USER_MESSAGES["EMPTY_EXTRACTION"]
+        == MISMATCH_MESSAGE
+    )
+    assert (
+        FAILURE_EVENT_MESSAGES["DOCUMENT_TYPE_MISMATCH"]
+        == FAILURE_EVENT_MESSAGES["EMPTY_EXTRACTION"]
+    )
