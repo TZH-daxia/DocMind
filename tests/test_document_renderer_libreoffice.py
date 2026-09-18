@@ -131,8 +131,8 @@ def test_render_xls_falls_back_to_plain_convert(
         pdf_path: Path,
         out_dir: Path,
         stem: str,
-    ) -> tuple[list[Path], int]:
-        return [], 0
+    ) -> tuple[list[Path], int, None]:
+        return [], 0, None
 
     monkeypatch.setattr(LocalDocumentRenderer, "_xls_to_pdf_libreoffice", raise_uno)
     monkeypatch.setattr(LocalDocumentRenderer, "_office_to_pdf_libreoffice", fake_plain)
@@ -150,8 +150,8 @@ def _fake_plain_convert(
 
 def _fake_empty_pages(
     self: LocalDocumentRenderer, pdf_path: Path, out_dir: Path, stem: str
-) -> tuple[list[Path], int]:
-    return [], 0
+) -> tuple[list[Path], int, None]:
+    return [], 0, None
 
 
 def test_render_docx_uses_libreoffice_convert(
@@ -205,9 +205,15 @@ def test_render_xlsx_without_libreoffice_raises(
     source = tmp_path / "a.xlsx"
     source.write_bytes(b"PK\x03\x04 fake xlsx")
 
+    def raise_uno(*args: Any, **kwargs: Any) -> tuple[Path, str]:
+        raise RuntimeError("LIBREOFFICE_UNO_UNAVAILABLE")
+
     def raise_convert(*args: Any, **kwargs: Any) -> tuple[Path, str]:
         raise RuntimeError("LIBREOFFICE_NOT_FOUND")
 
+    # UNO 分支也必须打桩：否则 render() 会真的拉起一次 soffice 转换，
+    # 让这个用例白等十几秒（本机装了 LibreOffice 时最明显）
+    monkeypatch.setattr(LocalDocumentRenderer, "_xls_to_pdf_libreoffice", raise_uno)
     monkeypatch.setattr(LocalDocumentRenderer, "_office_to_pdf_libreoffice", raise_convert)
     with pytest.raises(RuntimeError, match="LOCAL_RENDER_LIBREOFFICE_REQUIRED"):
         renderer.render(source, "a.xlsx", "task_xlsx")

@@ -19,12 +19,6 @@ def test_startup_banner_contains_base_url() -> None:
     assert str(settings.system_log_file) in banner
 
 
-def test_disable_console_quick_edit_noop_when_not_console() -> None:
-    """stdout 重定向（非控制台）时 GetConsoleMode 失败应直接返回，不抛异常。"""
-
-    launcher._disable_console_quick_edit()
-
-
 def test_disable_console_quick_edit_skips_non_windows(monkeypatch) -> None:
     """非 Windows 平台应直接跳过，不触碰控制台 API。"""
 

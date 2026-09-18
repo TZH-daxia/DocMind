@@ -41,9 +41,11 @@ def test_render_pages_filters_blank_page(tmp_path: Path) -> None:
     _make_pdf(pdf, ["Booking for GGK26"], blank_pages=1)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    images, page_count = renderer._render_pages(pdf, out_dir, "doc")
+    images, page_count, font_repair = renderer._render_pages(pdf, out_dir, "doc")
     assert page_count == 1
     assert [p.name for p in images] == ["doc_page_001.png"]
+    # 正常 PDF（PyMuPDF 会嵌入字体）不应该被字体修复命中
+    assert font_repair is None
 
 
 def test_render_pages_zero_threshold_disables_filter(tmp_path: Path) -> None:
@@ -54,7 +56,7 @@ def test_render_pages_zero_threshold_disables_filter(tmp_path: Path) -> None:
     _make_pdf(pdf, ["Booking for GGK26"], blank_pages=1)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    images, page_count = renderer._render_pages(pdf, out_dir, "doc")
+    images, page_count, _ = renderer._render_pages(pdf, out_dir, "doc")
     assert page_count == 2
     assert len(images) == 2
     assert os.path.exists(out_dir / "doc_page_002.png")
@@ -66,6 +68,6 @@ def test_render_pages_all_blank_keeps_first_page(tmp_path: Path) -> None:
     _make_pdf(pdf, ["", ""], blank_pages=0)
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    images, page_count = renderer._render_pages(pdf, out_dir, "doc")
+    images, page_count, _ = renderer._render_pages(pdf, out_dir, "doc")
     assert page_count == 1
     assert [p.name for p in images] == ["doc_page_001.png"]

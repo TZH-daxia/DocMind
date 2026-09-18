@@ -1,6 +1,8 @@
 """本地文档渲染：把 .pdf/.doc/.xls 转为页面图片，替代 MinerU 解析。
 
-- .pdf 直接用 PyMuPDF 光栅化；
+- .pdf 直接用 PyMuPDF 光栅化；光栅化前先做一次字体体检，命中"未嵌入字体 +
+  ASCII 字宽被声明为统一半宽"（国内表单工具导出常见）时，删掉错位文本层并用
+  系统宋体按原坐标重绘，避免字形互相压叠导致 VLM 读错；
 - .doc/.docx 用 LibreOffice headless 导出 PDF（跨平台，不依赖 MS Office，可迁 Linux）；
 - .xls/.xlsx 优先经 LibreOffice UNO 展开隐藏行列、修正合并单元格行高后导出 PDF，
   失败时回退普通 LibreOffice CLI 转换；
@@ -12,17 +14,22 @@
 
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config import Settings
 from app.storage.file_store import FileStore
+
+if TYPE_CHECKING:
+    import pymupdf
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +48,193 @@ FONT_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
 )
+
+# 字体修复用的重绘字体：必须是"拉丁字形为半宽"的中文字体，才能与 PDF 声明的统一
+# 字宽对齐。微软雅黑等字体的拉丁是比例字宽，用它重绘会重现错位，所以单独排序，
+# 前两个都找不到时才退回 FONT_CANDIDATES 里的通用中文字体（不完美但好过字形压叠）。
+HALFWIDTH_FONT_CANDIDATES = (
+    r"C:\Windows\Fonts\simsun.ttc",
+    "/usr/share/fonts/truetype/arphic/uming.ttc",
+)
+
+# 无嵌入字体 PDF 的判定阈值：ASCII 码位在 CID 字体里是 CID 1-95（0x20-0x7E）。
+# 声明宽度超过半宽说明该字体本就该用比例字宽，不属于要修的错位，不能重绘。
+ASCII_CID_RANGE = (1, 95)
+HALFWIDTH_MAX = 600
+
+
+def _safe_font_name(name: str) -> str:
+    """把字体名还原成可读文本，并保证一定能写进 JSON。
+
+    未嵌入字体的名字在 PDF 里多是 GBK 原始字节，PyMuPDF 有两种暴露方式：代理
+    字符（"宋体" → "\\udccb\\udcce\\udccc\\udce5"，走 xref）与 latin-1 字符
+    （"宋体" → "ËÎÌå"，走 get_fonts），这里都还原回 GBK。
+    """
+
+    text = str(name)
+    try:
+        if any("\udc80" <= char <= "\udcff" for char in text):
+            text = text.encode("utf-8", "surrogateescape").decode("gbk")
+        elif any("\u0080" <= char <= "\u00ff" for char in text):
+            text = text.encode("latin-1").decode("gbk")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    return text.encode("utf-8", "replace").decode("utf-8", "replace")
+
+
+def _parse_cid_widths(raw: str, cid_range: tuple[int, int]) -> dict[int, int] | None:
+    """把 CIDFont 的 /W 数组解析成 {cid: 宽度}，只保留 cid_range 内的条目。
+
+    支持 PDF 规范的两种写法：`c [w1 w2 ...]` 与 `cfirst clast w`；遇到嵌套数组
+    （竖排字宽）等未支持的形式返回 None，由调用方跳过修复。
+    """
+
+    low, high = cid_range
+    items: list[Any] = []
+    current: list[int] | None = None
+    depth = 0
+    for token in re.findall(r"\[|\]|[^\s\[\]]+", raw):
+        if token == "[":
+            depth += 1
+            if depth == 1:
+                continue  # /W 数组自身的方括号，不是元素
+            if depth == 2 and current is None:
+                current = []
+                continue
+            return None
+        if token == "]":
+            if depth == 2 and current is not None:
+                items.append(current)
+                current = None
+                depth -= 1
+                continue
+            if depth == 1:
+                depth -= 1
+                continue
+            return None
+        if depth == 0:
+            return None
+        try:
+            value = int(float(token))
+        except ValueError:
+            return None
+        if current is None:
+            items.append(value)
+        else:
+            current.append(value)
+    if depth != 0 or current is not None:
+        return None
+
+    widths: dict[int, int] = {}
+    index = 0
+    while index + 1 < len(items):
+        head = items[index]
+        following = items[index + 1]
+        if isinstance(head, list):
+            return None
+        if isinstance(following, list):
+            for offset, width in enumerate(following):
+                cid = head + offset
+                if low <= cid <= high:
+                    widths[cid] = width
+            index += 2
+            continue
+        if index + 2 >= len(items) or isinstance(items[index + 2], list):
+            return None
+        for cid in range(max(head, low), min(following, high) + 1):
+            widths[cid] = int(items[index + 2])
+        index += 3
+    return None if index != len(items) else widths
+
+
+def _detect_halfwidth_unembedded_fonts(page: "pymupdf.Page") -> list[str]:
+    """找出该页"未嵌入 + ASCII 字宽被声明为统一半宽"的字体。
+
+    这类字体（多为国内表单工具导出的 宋体/Tahoma）没嵌字体文件，MuPDF 只能用
+    比例字宽的替代字体绘制，却按声明的半宽推进，于是宽字母压叠、窄字母后留空隙。
+    返回命中的字体名（形如 "宋体(F0)"），未命中返回空列表。
+    """
+
+    low, high = ASCII_CID_RANGE
+    document = page.parent
+    hits: list[str] = []
+    for font in page.get_fonts(full=True):
+        xref, extension, font_type, basefont, resource_name = font[:5]
+        if extension != "n/a" or font_type != "Type0":
+            continue
+        descendants = document.xref_get_key(xref, "DescendantFonts")[1]
+        if not descendants.startswith("["):
+            continue
+        descendant = int(descendants.strip("[]").split()[0])
+        widths = _parse_cid_widths(
+            document.xref_get_key(descendant, "W")[1], ASCII_CID_RANGE
+        )
+        if not widths or any(cid not in widths for cid in range(low, high + 1)):
+            continue
+        declared = {widths[cid] for cid in range(low, high + 1)}
+        if len(declared) != 1 or declared.pop() > HALFWIDTH_MAX:
+            continue
+        hits.append(f"{_safe_font_name(basefont)}({resource_name})")
+    return hits
+
+
+@lru_cache(maxsize=1)
+def _load_halfwidth_redraw_font() -> "pymupdf.Font | None":
+    """加载字体修复用的半宽中文字体（宋体优先），都不可用时返回 None。"""
+
+    import pymupdf
+
+    for candidate in (*HALFWIDTH_FONT_CANDIDATES, *FONT_CANDIDATES):
+        if not Path(candidate).exists():
+            continue
+        try:
+            return pymupdf.Font(fontfile=candidate)
+        except (RuntimeError, ValueError) as error:
+            logger.warning("加载字体修复用字体失败：%s（%s）", candidate, error)
+    return None
+
+
+def _capture_text_spans(
+    page: "pymupdf.Page",
+) -> list[tuple[tuple[float, float], str, float]]:
+    """取出页面上所有非空文本 span 的 (基线起点, 文本, 字号)。"""
+
+    return [
+        (span["origin"], span["text"], span["size"])
+        for block in page.get_text("dict")["blocks"]
+        if block["type"] == 0
+        for line in block["lines"]
+        for span in line["spans"]
+        if span["text"].strip()
+    ]
+
+
+def _redraw_page_text(page: "pymupdf.Page", font: "pymupdf.Font") -> bool:
+    """先取 span 再删文本层（保留线稿），然后用 font 按原坐标重绘。
+
+    返回文本层是否清除干净：若仍有残留说明红action 没删净，那页会和重绘文字
+    叠加，调用方据此告警；但文字宁可重影也不能缺，所以照常重绘。
+    """
+
+    import pymupdf
+
+    spans = _capture_text_spans(page)
+    if not spans:
+        return True
+    page.add_redact_annot(page.rect)
+    # pymupdf 的类型信息里没有这几个常量（运行时才存在），用 getattr 取；
+    # 三者的取值都是 0，语义分别是"保留图片 / 保留线稿 / 删除文本"。
+    page.apply_redactions(
+        images=getattr(pymupdf, "PDF_REDACT_IMAGE_NONE", 0),
+        graphics=getattr(pymupdf, "PDF_REDACT_LINE_ART_NONE", 0),
+        text=getattr(pymupdf, "PDF_REDACT_TEXT_REMOVE", 0),
+    )
+    clean = not page.get_text("text").strip()
+    writer = pymupdf.TextWriter(page.rect)
+    for origin, text, size in spans:
+        writer.append(origin, text, font=font, fontsize=size)
+    writer.write_text(page)
+    return clean
 
 
 @dataclass(frozen=True)
@@ -100,21 +294,23 @@ class LocalDocumentRenderer:
                     libreoffice_error,
                 )
                 converter = "synthetic"
+        font_repair: dict[str, Any] | None = None
         if converter == "synthetic":
             # 合成图直接由 .xls 源文件生成，不能再把它当 PDF 光栅化
             image_paths, page_count = self._xls_synthetic_images(source_path, out_dir, stem)
         else:
-            image_paths, page_count = self._render_pages(pdf_path, out_dir, stem)
+            image_paths, page_count, font_repair = self._render_pages(pdf_path, out_dir, stem)
         metadata_path = out_dir / f"{stem}_render_meta.json"
-        self.file_store.write_json_atomic(
-            metadata_path,
-            {
-                "source": source_path.name,
-                "converter": converter,
-                "page_count": page_count,
-                "images": [path.name for path in image_paths],
-            },
-        )
+        metadata: dict[str, Any] = {
+            "source": source_path.name,
+            "converter": converter,
+            "page_count": page_count,
+            "images": [path.name for path in image_paths],
+        }
+        if font_repair is not None:
+            # 让"这份文档做过字体修复"可见，排查渲染/识别异常时不必靠猜
+            metadata["font_repair"] = font_repair
+        self.file_store.write_json_atomic(metadata_path, metadata)
         return RenderedDocument(
             parsed_directory=out_dir,
             metadata_path=metadata_path,
@@ -378,11 +574,74 @@ class LocalDocumentRenderer:
         produced.replace(pdf_path)
         return pdf_path, "libreoffice"
 
-    def _render_pages(self, pdf_path: Path, out_dir: Path, stem: str) -> tuple[list[Path], int]:
+    def _repair_unembedded_halfwidth_fonts(
+        self, document: "pymupdf.Document"
+    ) -> dict[str, Any] | None:
+        """删掉错位文本层并用半宽中文字体重绘，返回修复信息（未命中返回 None）。
+
+        只重排"声明的字宽与实际字形不匹配"的文本，不动矢量表格线，也不改 span
+        坐标，因此字段定位逻辑不受影响。判据与修法见模块顶部两个函数。
+        """
+
+        target_pages: list[pymupdf.Page] = []
+        detected: list[str] = []
+        for index in range(min(document.page_count, MAX_PAGES)):
+            page = document[index]
+            try:
+                hits = _detect_halfwidth_unembedded_fonts(page)
+            except Exception as error:  # noqa: BLE001 - 字体字典异常时跳过修复，不能拖垮渲染
+                logger.warning(
+                    "字体体检失败，跳过第 %s 页的字体修复：%s", index + 1, error
+                )
+                continue
+            if hits:
+                target_pages.append(page)
+                detected.extend(name for name in hits if name not in detected)
+        if not target_pages:
+            return None
+
+        repair_info: dict[str, Any] = {
+            "reason": "unembedded_font_uniform_halfwidth",
+            "fonts": detected,
+        }
+        font = _load_halfwidth_redraw_font()
+        if font is None:
+            logger.warning(
+                "检出未嵌入半宽字体 %s，但未找到可用中文字体，跳过字体修复", detected
+            )
+            repair_info.update({"repaired_pages": 0, "status": "skipped_font_missing"})
+            return repair_info
+
+        leftover_pages = 0
+        for page in target_pages:
+            if not _redraw_page_text(page, font):
+                leftover_pages += 1
+                logger.warning(
+                    "第 %s 页文本层未完全清除，已按原坐标重绘（可能与残留文字重叠）",
+                    page.number + 1,
+                )
+        repair_info.update(
+            {
+                "repaired_pages": len(target_pages),
+                "leftover_text_pages": leftover_pages,
+                "status": "repaired",
+            }
+        )
+        logger.warning(
+            "检出未嵌入半宽字体 %s，已重绘 %s 页文本层",
+            detected,
+            len(target_pages),
+        )
+        return repair_info
+
+    def _render_pages(
+        self, pdf_path: Path, out_dir: Path, stem: str
+    ) -> tuple[list[Path], int, dict[str, Any] | None]:
         """光栅化 PDF 页面（上限 MAX_PAGES），过滤近空白页后返回图片路径列表。
 
         LibreOffice 导出的是整个工作簿：宽表横向溢出、附带 sheet 都会产生
         几乎空白的页面，送 VLM 只会增加噪音，因此按非白像素占比过滤。
+        第三项是字体修复信息，未命中错位字体时为 None。
         """
 
         import pymupdf
@@ -391,6 +650,7 @@ class LocalDocumentRenderer:
         image_paths: list[Path] = []
         first_page: Path | None = None
         with pymupdf.open(pdf_path) as document:
+            font_repair = self._repair_unembedded_halfwidth_fonts(document)
             for index, page in enumerate(document):
                 if index >= MAX_PAGES:
                     break
@@ -407,7 +667,7 @@ class LocalDocumentRenderer:
         if not image_paths and first_page is not None:
             logger.warning("所有页面均为近空白，保留首页：%s", first_page.name)
             image_paths.append(first_page)
-        return image_paths, len(image_paths)
+        return image_paths, len(image_paths), font_repair
 
     @staticmethod
     def _is_near_blank(image_path: Path, threshold: float) -> bool:
