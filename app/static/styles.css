@@ -1435,6 +1435,11 @@ select:focus {
   pointer-events: none;
 }
 
+/* 已提交：日期字段仍可点击核对，但不再打开选择器 */
+.doc-dialog-date.is-locked {
+  cursor: default;
+}
+
 .doc-dialog-table-wrap {
   flex: 1;
   min-height: 0;

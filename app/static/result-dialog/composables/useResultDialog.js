@@ -1,4 +1,5 @@
 import { fetchRecentFiles, fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
+import { loadDraftForm, rememberDraftForm } from "../draftForms.js";
 import { loadSubmittedTaskIds, rememberSubmittedTask } from "../submittedTasks.js";
 import {
   DATE_VALUE_PATTERN,
@@ -9,27 +10,52 @@ import {
 import { dialogState } from "../state.js";
 import { firstErrorField, validateBeforeSubmit } from "./useSubmitValidation.js";
 
+const { watch } = window.Vue;
+
 const loadedTaskIds = new Set();
 // 头部页签条固定显示 5 个最近文件（对应设计稿 Frame 84 的 5 个页签：5×216 + 4×4 = 1096px）
 const MAX_FILE_TABS = 5;
 // 已提交成功的任务 id（localStorage 持久化）：页签条据此显示绿色 + 对号
 let submittedTaskIds = loadSubmittedTaskIds();
-// 各任务"当前表单值"的内存缓存：切走时存下、切回时恢复，支持来回对照与继续编辑。
-// 后端只保存 AI 抽取结果（提交尚未真正落库），所以用户填过的内容必须在前端留住。
-const taskForms = new Map();
 
+// 记住某任务填过的内容：草稿落在 localStorage（见 draftForms.js），
+// 因此切走再切回、甚至刷新页面后都能恢复，人工核对成果不会丢
 function rememberForm(taskId) {
   if (!taskId) {
     return;
   }
-  taskForms.set(taskId, JSON.parse(JSON.stringify(dialogState.form)));
+  rememberDraftForm(taskId, dialogState.form);
 }
+
+// 输入即存（防抖 400ms）：填到一半就刷新/关标签页也不会丢。
+// 切换任务与提交成功时另有立即写入，所以这里只兜"边填边存"这一种情况。
+const DRAFT_DEBOUNCE_MS = 400;
+let draftTimer = null;
+watch(
+  () => dialogState.form,
+  () => {
+    const taskId = dialogState.taskId;
+    if (!taskId) {
+      return;
+    }
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => {
+      // 表单变化后任务已切走：不要再把上一个任务的表单落到新任务名下
+      if (dialogState.taskId === taskId) {
+        rememberDraftForm(taskId, dialogState.form);
+      }
+    }, DRAFT_DEBOUNCE_MS);
+  },
+  { deep: true },
+);
 
 async function loadTask(taskId) {
   if (loadedTaskIds.has(taskId) && dialogState.taskId === taskId) {
     return;
   }
   dialogState.taskId = taskId;
+  // 已提交状态跟着任务走：刷新页面后也从本地记录恢复，按钮仍是「已提交」
+  dialogState.submitted = submittedTaskIds.has(String(taskId));
   dialogState.loading = true;
   dialogState.error = "";
   try {
@@ -192,9 +218,9 @@ function applyResult(result, taskId) {
     }
     original[key] = JSON.parse(JSON.stringify(form[key]));
   }
-  // 该任务之前填过：用缓存覆盖表单值。original 仍是 AI 抽取结果，
+  // 该任务之前填过（含刷新后的本地草稿）：用它覆盖表单值。original 仍是 AI 抽取结果，
   // 所以"已修改"标记依然能正确指出哪些字段被人改过
-  const cachedForm = taskForms.get(taskId);
+  const cachedForm = loadDraftForm(taskId);
   if (cachedForm) {
     for (const key of FIELD_ORDER) {
       if (key in cachedForm) {
@@ -247,6 +273,10 @@ export const resultDialog = {
       return;
     }
     submittedTaskIds = rememberSubmittedTask(taskId);
+    // 正打开的就是这个任务：按钮立刻变「已提交」并置灰，无需重新加载
+    if (dialogState.taskId === taskId) {
+      dialogState.submitted = true;
+    }
     dialogState.fileTabs = dialogState.fileTabs.map((tab) =>
       tab.taskId === taskId ? { ...tab, submitted: true } : tab,
     );

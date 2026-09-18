@@ -18,6 +18,8 @@ export const FieldFormRow = {
     locations: { type: Object, default: () => ({}) },
     portCandidates: { type: Object, default: () => ({}) },
     error: { type: [Boolean, String], default: false },
+    // 已提交：字段只读（仍可点击核对原文高亮，但不能再改动）
+    locked: { type: Boolean, default: false },
   },
   emits: ["field-focus"],
   data() {
@@ -44,6 +46,10 @@ export const FieldFormRow = {
   methods: {
     onDateClick() {
       this.$emit("field-focus", this.focusPayload);
+      if (this.locked) {
+        // 已提交：只做核对高亮，不打开日期选择器
+        return;
+      }
       this.togglePicker();
     },
     onFieldFocus() {
@@ -282,7 +288,7 @@ export const FieldFormRow = {
           v-else-if="row.control === 'date'"
           ref="dateField"
           class="doc-dialog-date"
-          :class="{ 'is-open': pickerOpen }"
+          :class="{ 'is-open': pickerOpen, 'is-locked': locked }"
           @click="onDateClick"
         >
           <span class="doc-dialog-date-text" :class="{ 'is-empty': !target }">
@@ -296,6 +302,7 @@ export const FieldFormRow = {
           class="doc-dialog-input"
           rows="1"
           v-model="target"
+          :readonly="locked"
           @input="onMultilineInput"
           @focus="onFieldFocus"
         ></textarea>
@@ -306,6 +313,7 @@ export const FieldFormRow = {
           :inputmode="row.control === 'integer' ? 'numeric' : 'decimal'"
           autocomplete="off"
           :value="target"
+          :readonly="locked"
           @input="onNumericInput"
           @focus="onFieldFocus"
         >
@@ -313,6 +321,7 @@ export const FieldFormRow = {
           v-else-if="comboboxAdapter"
           :model-value="target"
           :adapter="comboboxAdapter"
+          :locked="locked"
           @update:model-value="selectComboboxValue"
           @focus="onFieldFocus"
         />
@@ -321,11 +330,13 @@ export const FieldFormRow = {
           class="doc-dialog-input"
           type="text"
           v-model="target"
+          :readonly="locked"
           @focus="onFieldFocus"
         >
         <small v-if="rawHint" class="doc-dialog-hint">{{ rawHint }}</small>
         <small v-if="reviewHint" class="doc-dialog-hint" :title="reviewTitle">{{ reviewHint }}</small>
-        <div v-if="candidates.length" class="doc-dialog-candidates">
+        <!-- 已提交：候选是补录辅助，锁定后不再展示 -->
+        <div v-if="candidates.length && !locked" class="doc-dialog-candidates">
           <span class="doc-dialog-candidates-label">候选({{ candidates.length }})</span>
           <button
             v-for="item in visibleCandidates"

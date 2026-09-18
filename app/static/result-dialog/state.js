@@ -26,6 +26,8 @@ export const dialogState = reactive({
   fieldStatus: {},
   errors: {},
   submitting: false,
+  // 当前任务是否已提交成功：提交按钮据此显示「已提交」并禁止再次点击
+  submitted: false,
 });
 
 export function resetDialogContent() {
@@ -46,4 +48,5 @@ export function resetDialogContent() {
   dialogState.highlightStatus = "";
   dialogState.fieldStatus = {};
   dialogState.errors = {};
+  dialogState.submitted = false;
 }

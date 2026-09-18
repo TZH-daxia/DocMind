@@ -29,6 +29,8 @@ export const SearchCombobox = {
   props: {
     modelValue: { type: [String, Number], default: "" },
     adapter: { type: Object, required: true },
+    // 已提交：只读（不可输入、不可改选，但仍可聚焦核对原文）
+    locked: { type: Boolean, default: false },
   },
   emits: ["update:modelValue", "focus"],
   data() {
@@ -273,8 +275,9 @@ export const SearchCombobox = {
       }
     },
     selectOption(item) {
-      if (!item || this.disabledOf(item)) {
-        // 不可选项（如已停用客户）不写入表单，避免把无效值带进订单
+      if (!item || this.disabledOf(item) || this.locked) {
+        // 不可选项（如已停用客户）不写入表单，避免把无效值带进订单；
+        // 已提交的字段同样不写回，保证锁定后表单值不再变化
         return;
       }
       this.touched = true;
@@ -293,6 +296,7 @@ export const SearchCombobox = {
         :class="{ 'is-pending': needsPick }"
         type="text"
         autocomplete="off"
+        :readonly="locked"
         :value="keyword"
         :placeholder="degraded ? adapter.degradedPlaceholder : adapter.placeholder"
         :title="inputHint"

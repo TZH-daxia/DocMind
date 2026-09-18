@@ -37,6 +37,10 @@ export const ResultDialog = {
       resultDialog.focusField(payload);
     },
     onSubmit() {
+      if (this.state.submitted) {
+        // 按钮已置灰，这里再兜一层：键盘/脚本触发也不允许重复提交
+        return;
+      }
       const outcome = resultDialog.submit();
       if (!outcome.ok) {
         const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
@@ -53,7 +57,7 @@ export const ResultDialog = {
       // 注意：真实提交接口尚未接入，这里先给出「提交成功」提示并走页签颜色逻辑，
       // 目的是验证"提交成功→浅绿 / 选中→深绿 + 对号"的状态变化。
       notify("提交成功", "success");
-      // 标记为已提交：页签条对该文件显示绿色 + 对号
+      // 标记为已提交：页签条对该文件显示绿色 + 对号，弹窗按钮变「已提交」并置灰
       // （真实提交接口接入后，把这一句挪到提交成功回调里即可）
       resultDialog.markSubmitted(this.state.taskId);
       // 提交后不自动收起弹窗：方便立刻看到页签变绿，也便于继续核对其他文件
@@ -96,10 +100,11 @@ export const ResultDialog = {
               type="button"
               @click="onCollapse"
             >收起</button>
+            <!-- 已提交是终态：按钮沿用「提交」文案，仅置灰且不可再点 -->
             <button
               class="doc-dialog-submit"
               type="button"
-              :disabled="state.submitting || formDisabled"
+              :disabled="state.submitted || state.submitting || formDisabled"
               @click="onSubmit"
             ><span v-if="state.submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交</button>
           </div>
@@ -123,6 +128,7 @@ export const ResultDialog = {
             :port-candidates="state.portCandidates"
             :errors="state.errors"
             :disabled="formDisabled"
+            :locked="state.submitted"
             :reset-key="state.taskId"
             @field-focus="onFieldFocus"
           />

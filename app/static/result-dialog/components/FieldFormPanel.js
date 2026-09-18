@@ -13,6 +13,8 @@ export const FieldFormPanel = {
     portCandidates: { type: Object, default: () => ({}) },
     errors: { type: Object, default: () => ({}) },
     disabled: { type: Boolean, default: false },
+    // 已提交：整表字段只读（与 disabled 的区别是仍可点击核对原文高亮）
+    locked: { type: Boolean, default: false },
     // 数据来源标识（任务 ID）：变化时强制重建各行，避免输入框内部状态
     // （下拉选中项、搜索词、展开态等）残留到下一个任务
     resetKey: { type: [String, Number], default: "" },
@@ -42,6 +44,7 @@ export const FieldFormPanel = {
               :locations="locations"
               :port-candidates="portCandidates"
               :error="errors[row.id]"
+              :locked="locked"
               @field-focus="$emit('field-focus', $event)"
             />
           </tbody>
