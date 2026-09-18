@@ -1231,8 +1231,8 @@ select:focus {
 }
 
 .doc-dialog-collapse:hover {
-  border-color: var(--teal);
-  color: var(--teal);
+  /* 悬浮只压暗底色：描边与文字保持原样，不出现一圈蓝边（与「提交」的悬浮反馈一致） */
+  background: var(--canvas);
 }
 
 .doc-dialog-date {
