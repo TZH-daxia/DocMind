@@ -7,6 +7,10 @@
   --navy: #203846;
   --teal: #139c91;
   --teal-soft: #e3f4f1;
+  /* 强调蓝：与弹窗顶部文件页签同色，供表单输入与日期组件统一使用 */
+  --blue: #3b85fb;
+  --blue-strong: #639fff;
+  --blue-soft: #e3efff;
   --amber: #c6802f;
   --amber-soft: #fff1dc;
   --red: #c55755;
@@ -859,9 +863,10 @@ select:focus {
   gap: 12px;
 }
 
-/* 此处标题为 14px/加粗、不沿用全局的 10px 大写小标（颜色统一取全局的黑色） */
+/* 此处标题为 14px/加粗、不沿用全局的 10px 大写小标（颜色取强调蓝，与顶部文件页签一致） */
 .doc-dialog-head-title .doc-dialog-eyebrow {
   justify-self: start;
+  color: var(--blue);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0;
@@ -917,7 +922,7 @@ select:focus {
   border: none;
   border-radius: 8px 8px 0 0;
   background: linear-gradient(90deg, rgba(59, 133, 251, 0.2) 0%, rgba(99, 159, 255, 0.2) 100%);
-  color: #3b85fb;
+  color: var(--blue);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 13px;
   font-weight: 400;
@@ -931,7 +936,7 @@ select:focus {
 }
 
 .doc-file-tab.is-active {
-  background: linear-gradient(90deg, #3b85fb 0%, #639fff 100%);
+  background: linear-gradient(90deg, var(--blue) 0%, var(--blue-strong) 100%);
   color: #ffffff;
 }
 
@@ -999,6 +1004,7 @@ select:focus {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  /* 栏目标题小标默认取全局黑色（SOURCE DOCUMENT / EXTRACTED FIELDS） */
   color: #000000;
 }
 
@@ -1070,8 +1076,8 @@ select:focus {
 }
 
 .doc-dialog-zoom-button:hover:not(:disabled) {
-  border-color: var(--teal);
-  color: var(--teal);
+  border-color: var(--blue);
+  color: var(--blue);
 }
 
 .doc-dialog-zoom-button:disabled {
@@ -1092,7 +1098,7 @@ select:focus {
 }
 
 .doc-dialog-zoom-value:hover:not(:disabled) {
-  color: var(--teal);
+  color: var(--blue);
 }
 
 .doc-dialog-zoom-value:disabled {
@@ -1149,10 +1155,10 @@ select:focus {
 
 .doc-highlight {
   position: absolute;
-  border: 1.5px solid var(--teal);
+  border: 1.5px solid var(--blue);
   border-radius: 3px;
-  background: rgba(19, 156, 145, 0.22);
-  box-shadow: 0 0 0 2px rgba(19, 156, 145, 0.16);
+  background: rgba(59, 133, 251, 0.22);
+  box-shadow: 0 0 0 2px rgba(59, 133, 251, 0.16);
   pointer-events: none;
   animation: docHighlightPulse 1.8s ease-in-out 2;
 }
@@ -1255,8 +1261,8 @@ select:focus {
 }
 
 .doc-dialog-date.is-open {
-  border-color: var(--teal);
-  box-shadow: 0 0 0 3px var(--teal-soft);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
 }
 
 .doc-dialog-date-text {
@@ -1326,7 +1332,7 @@ select:focus {
 .doc-date-picker-nav:hover {
   border-color: var(--line);
   background: var(--canvas);
-  color: var(--teal);
+  color: var(--blue);
 }
 
 .doc-date-picker-weekdays,
@@ -1353,8 +1359,8 @@ select:focus {
 }
 
 .doc-date-picker-day:hover {
-  background: var(--teal-soft);
-  color: var(--teal);
+  background: var(--blue-soft);
+  color: var(--blue);
 }
 
 .doc-date-picker-day.is-outside {
@@ -1362,12 +1368,12 @@ select:focus {
 }
 
 .doc-date-picker-day.is-today {
-  border-color: var(--teal);
+  border-color: var(--blue);
 }
 
 .doc-date-picker-day.is-selected {
-  border-color: var(--teal);
-  background: var(--teal);
+  border-color: var(--blue);
+  background: var(--blue);
   color: var(--surface);
   font-weight: 700;
 }
@@ -1393,8 +1399,8 @@ select:focus {
 
 .doc-date-picker-today:hover,
 .doc-date-picker-close:hover {
-  border-color: var(--teal);
-  color: var(--teal);
+  border-color: var(--blue);
+  color: var(--blue);
 }
 
 /* 主操作：设计稿 #DD9E4C 琥珀实心（尺寸见上方与「收起」共用的那段） */
@@ -1542,8 +1548,8 @@ select:focus {
 }
 
 .doc-dialog-badge.edited {
-  background: var(--teal-soft);
-  color: var(--teal);
+  background: var(--blue-soft);
+  color: var(--blue);
 }
 
 .doc-dialog-locate-chip {
@@ -1564,7 +1570,7 @@ select:focus {
 
 .doc-dialog-input:focus {
   outline: none;
-  border-color: var(--teal);
+  border-color: var(--blue);
 }
 
 /* 多行输入框按内容自适应高度（见 FieldFormRow.autoGrowTextarea）：默认 1 行（rows="1"），
@@ -1612,10 +1618,10 @@ textarea.doc-dialog-input {
   gap: 4px;
   max-width: 240px;
   padding: 2px 8px;
-  border: 1px solid var(--teal);
+  border: 1px solid var(--blue);
   border-radius: 999px;
-  background: var(--teal-soft);
-  color: var(--teal);
+  background: var(--blue-soft);
+  color: var(--blue);
   font-size: 11px;
   cursor: pointer;
 }
@@ -1628,7 +1634,7 @@ textarea.doc-dialog-input {
 }
 
 .doc-dialog-candidate-chip:hover {
-  border-color: #0f877d;
+  border-color: #2b6fd8;
 }
 
 .doc-dialog-candidate-more {
@@ -1641,7 +1647,7 @@ textarea.doc-dialog-input {
 }
 
 .doc-dialog-candidate-more:hover {
-  color: var(--teal);
+  color: var(--blue);
 }
 
 /* 下拉输入框：输入即搜索，候选来自主数据，选中后才回填表单值 */
@@ -1688,7 +1694,7 @@ textarea.doc-dialog-input {
 
 .doc-dialog-combobox-option:hover,
 .doc-dialog-combobox-option.is-active {
-  background: var(--teal-soft);
+  background: var(--blue-soft);
 }
 
 .doc-dialog-combobox-option.is-unavailable {
