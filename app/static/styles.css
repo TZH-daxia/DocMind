@@ -1482,17 +1482,25 @@ select:focus {
   background: var(--red-soft);
 }
 
+/* 行首「项目」列：th 保持默认的 table-cell，垂直对齐交回表格算法；
+   内部的「左标签 / 右标记」布局交给内层 flex。
+   注意：若直接把 display:flex 写在 th 上，浏览器会为它生成匿名 table-cell，
+   vertical-align 随之失效——行被右侧内容撑高时标签就会贴在顶部，无法上下居中。 */
 .doc-dialog-field {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
   padding: 12px 14px 12px 18px;
   color: var(--navy);
   font-weight: 600;
   text-align: left;
-  vertical-align: top;
+  /* 行高由右侧内容决定，这里让标签在整行内上下居中 */
+  vertical-align: middle;
   white-space: nowrap;
+}
+
+.doc-dialog-field-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .doc-dialog-field-label {

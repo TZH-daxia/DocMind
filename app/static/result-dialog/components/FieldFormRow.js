@@ -259,21 +259,23 @@ export const FieldFormRow = {
   template: `
     <tr :id="'doc-dialog-row-' + row.id" :class="{ 'has-error': error }">
       <th scope="row" class="doc-dialog-field">
-        <span class="doc-dialog-field-label">
-          {{ row.label }}<i v-if="row.required" class="doc-dialog-required">*</i>
-        </span>
-        <span class="doc-dialog-markers">
-          <span class="doc-dialog-marker-slot">
-            <em v-if="badge" class="doc-dialog-badge" :class="badgeClass">{{ badge }}</em>
+        <div class="doc-dialog-field-inner">
+          <span class="doc-dialog-field-label">
+            {{ row.label }}<i v-if="row.required" class="doc-dialog-required">*</i>
           </span>
-          <span class="doc-dialog-marker-slot">
-            <em
-              v-if="showMissingLocation"
-              class="doc-dialog-locate-chip"
-              title="文档中没有找到这个值的位置，请人工核对"
-            >未定位</em>
+          <span class="doc-dialog-markers">
+            <span class="doc-dialog-marker-slot">
+              <em v-if="badge" class="doc-dialog-badge" :class="badgeClass">{{ badge }}</em>
+            </span>
+            <span class="doc-dialog-marker-slot">
+              <em
+                v-if="showMissingLocation"
+                class="doc-dialog-locate-chip"
+                title="文档中没有找到这个值的位置，请人工核对"
+              >未定位</em>
+            </span>
           </span>
-        </span>
+        </div>
       </th>
       <td class="doc-dialog-value">
         <input
