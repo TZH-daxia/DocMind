@@ -164,12 +164,14 @@ LibreOffice 只处理 doc/docx/xls/xlsx（单页约 5~15s），PDF 走 PyMuPDF �
 ## Docker 部署（Linux 服务器）
 
 镜像已内置 Python 3.12 运行时、LibreOffice（Writer + Calc，`DOCMIND_SOFFICE_PATH`
-留空自动探测到 `/usr/bin/soffice`）、中文字体（文泉驿），**服务器无需额外安装任何依赖**。
+留空自动探测到 `/usr/bin/soffice`）、中文字体（文泉驿），**服务器无需额外安装任何运行时依赖**。
 
 ### 前置条件
 
 - Docker 24+ 与 Docker Compose v2（`docker compose version` 可查）
 - 建议 2 核 4GB 以上：5 份文件并发时峰值约 2~3GB，主要来自 LibreOffice
+- 一个对外端口：DocMind 自带 nginx 容器，默认用宿主 **8443**（宿主 80/443 可以已被
+  其它站点占用，两者互不影响）
 - DeepSeek API Key
 
 ### 部署步骤
@@ -178,21 +180,77 @@ LibreOffice 只处理 doc/docx/xls/xlsx（单页约 5~15s），PDF 走 PyMuPDF �
 # 1. 获取代码
 git clone <你的仓库地址> && cd DocMind
 
-# 2. 配置密钥（.env 已被 .gitignore 排除，不会被提交）
+# 2. 准备数据与日志目录：容器以 uid/gid 10001 运行，宿主机目录的属主要交给它，
+#    否则挂载后写入会被拒绝。logs/ 不在仓库里，必须先创建。
+#    （以 root 部署时直接执行；普通用户前面加 sudo）
+mkdir -p data logs && chown -R 10001:10001 data logs
+
+# 3. 配置密钥（.env 已被 .gitignore 排除，不会被提交）
 cp .env.example .env
 # 编辑 .env，至少填入 DEEPSEEK_API_KEY
 
-# 3. 构建并后台启动（首次需下载依赖 + LibreOffice，约 5~10 分钟）
+# 4. 构建并后台启动（首次需下载依赖 + LibreOffice，约 5~10 分钟）
 docker compose up -d --build
 
-# 4. 查看启动日志
-docker compose logs -f docmind
+# 5. 查看启动日志：应用日志只写文件，容器 stdout 上基本没有内容
+docker compose exec docmind tail -f /app/logs/app.log
 
-# 5. 健康检查
+# 6. 健康检查
 curl http://127.0.0.1:8000/health
 ```
 
-启动后浏览器打开 `http://<服务器IP>:8000/` 即可使用（接口文档 `/docs`）。
+容器只绑 `127.0.0.1:8000`（仅供宿主调试与 SSH 隧道），线上流量走本项目内部网络直达 gateway。
+
+### 入口：自带 Nginx 容器（不共用 80/443）
+
+DocMind **不使用**同机其它站点的 Nginx，也不占用它们的 80/443。compose 里的 `gateway`
+服务是一个专属 nginx 容器：容器内监听 443，宿主端口由 `DOCMIND_HTTPS_PORT` 决定
+（默认 **8443**）。
+
+对外地址：`https://ai.wecanintl.com:8443/docmind/...`
+
+- 复用 `ai.wecanintl.com` 现成的解析（已指向本机），**不需要新增 DNS 记录**；
+- 证书是泛域名 `*.wecanintl.com`，覆盖该域名，浏览器无警告；
+- 该容器只有一个 server 块，即 8443 端口上的默认 server，所以任何解析到本机的域名
+  （含直接用 IP）都能命中；以后补上 `docmind.wecanintl.com` 的解析也无需改配置。
+
+配置见 [`deploy/nginx/docmind.conf`](deploy/nginx/docmind.conf)（完整的 server 块）。
+改完配置后生效：
+
+```bash
+docker exec docmind-gateway nginx -t && docker exec docmind-gateway nginx -s reload
+```
+
+前置条件：
+
+- **阿里云安全组**：放行 `DOCMIND_HTTPS_PORT`（默认 8443/TCP）——这是相比使用标准
+  80/443 唯一多出来的一步；
+- **证书**：只读挂载现成的泛域名证书目录，续期后自动生效，不用新签。
+
+对外只开放业务接口 `/docmind/analysis/**`（接口基址
+`https://ai.wecanintl.com:8443/docmind`），供官网项目的前端跨域调用。
+**基址必须带 `:8443`**——漏掉端口会打到同域名的 443（客服站点）上。
+
+例外：`GET /docmind/analysis/files`（列出全部已上传任务）**只在本地联调时使用，线上由
+Nginx 精确匹配封死并返回 404**。内置前端（`/`、`/static/**`）、`/docs`、`/redoc`、
+`/openapi.json` 同样一律 404——那套页面只是开发/联调界面，不进生产。测试时用 SSH 隧道经
+宿主回环口访问，生产零暴露（隧道不经过 Nginx，所以 `/files` 在其中仍然可用）：
+
+```bash
+ssh -L 8000:127.0.0.1:8000 root@<服务器IP>
+# 本机浏览器打开 http://127.0.0.1:8000/
+```
+
+两点必须保留，否则功能会残：
+
+- `proxy_buffering off` + `proxy_read_timeout 3600s`：核对弹窗的节点时间线靠 SSE
+  实时下推，缓冲或超时会让进度卡住不动；
+- `client_max_body_size` 要与 `DOCMIND_MAX_FILE_SIZE_BYTES` 一致（默认 50MB），
+  否则大文件在 Nginx 层就返回 413。
+
+跨域由应用侧放行，必须在 `.env` 里把官网来源写进 `DOCMIND_CORS_ALLOW_ORIGINS`
+（如 `https://www.wecanintl.com,https://ai.wecanintl.com`）。**不要写 `*`**——接口目前
+没有鉴权，写成 `*` 等于任何站点都能读走响应内容。
 
 改宿主端口：`HOST_PORT=9001 docker compose up -d`（容器内固定 8000）。
 
@@ -200,21 +258,27 @@ curl http://127.0.0.1:8000/health
 
 | 内容 | 位置 |
 |---|---|
-| 上传原件、任务产物、分析结果 | 卷 `docmind-data` → 容器 `/app/data` |
-| 系统日志 | 卷 `docmind-logs` → 容器 `/app/logs`（也可 `docker compose logs -f`） |
+| 上传原件、任务产物、分析结果 | 宿主机 `./data`（挂载到容器 `/app/data`） |
+| 系统日志 | 宿主机 `./logs`（挂载到容器 `/app/logs`） |
 
-升级：`git pull && docker compose up -d --build`（数据卷不受影响）。
+两个目录直接落在项目目录下，宿主机上可以随时翻看（如 `data/parsed_documents/<task_id>/`）。
+目录属主是容器内的 `docmind` 用户（uid/gid `10001`）：读取不需要额外权限，删除文件需要
+`sudo`。要放到独立数据盘时，把 `docker-compose.yml` 里的 `./data`、`./logs` 换成绝对路径即可。
+
+升级：`git pull && docker compose up -d --build`（`./data`、`./logs` 不受影响，
+但在途任务会在重启后被标记为中断）。
 
 ### 部署相关参数
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `HOST_PORT` | `8000` | 宿主机映射端口（compose 读取，非应用变量） |
+| `DOCMIND_HTTPS_PORT` | `8443` | 自带 nginx 容器对外的宿主端口；**需在安全组放行**。改了之后访问地址要带新端口 |
+| `HOST_PORT` | `8000` | docmind 容器映射到宿主的调试端口，只绑回环 |
 | `DOCMIND_HOST` | `0.0.0.0` | compose 已强制设置：容器内监听 `127.0.0.1` 时宿主机访问不到 |
 | `DEEPSEEK_API_KEY` | 必填 | 缺失时服务启动即失败，表现为容器反复重启 |
-| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 内存吃紧或转换超时时调小到 2~3 |
-| `DOCMIND_MAX_CONCURRENT_TASKS` | `12` | 同时存活任务数上限（兜底） |
-| `DOCMIND_MODEL_MAX_CONCURRENT` | `5` | 上游 429 或大面积超时时调小到 3 |
+| `DOCMIND_LO_MAX_CONCURRENT` | `5` | 同时进行的 LibreOffice 转换数，不要超过 CPU 核数 |
+| `DOCMIND_MAX_CONCURRENT_TASKS` | `20` | 同时存活任务数上限（兜底） |
+| `DOCMIND_MODEL_MAX_CONCURRENT` | `8` | 上游 429 或大面积超时时调小到 3~5 |
 | `UV_INDEX_URL` | 空 | 构建参数：境外服务器改用 `--build-arg UV_INDEX_URL=https://pypi.org/simple` |
 
 > 任务在单个进程内调度，状态与产物落在文件与卷上，**不要开多副本或多 uvicorn worker**：

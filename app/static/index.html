@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DocMind 文档分析台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260918e">
+  <!-- 资源路径用相对形式：由浏览器按文档地址解析，因此在
+       本地根路径（http://127.0.0.1:8000/）与线上域名根
+       （https://docmind.wecanintl.com/）下都能正确加载，
+       将来若改挂到某个路径前缀下（/xxx/）也无需改动。 -->
+  <link rel="stylesheet" href="static/styles.css?v=20260921a">
 </head>
 <body>
   <main class="app-shell">
@@ -109,9 +113,9 @@
     <div id="toast" class="toast" role="status"></div>
     <div id="resultDialogRoot"></div>
   </main>
-  <script src="/static/vendor/vue.global.prod.js?v=20260918e"></script>
-  <script src="/static/api.js?v=20260918e"></script>
-  <script src="/static/app.js?v=20260918e"></script>
-  <script type="module" src="/static/result-dialog/index.js?v=20260918e"></script>
+  <script src="static/vendor/vue.global.prod.js?v=20260921a"></script>
+  <script src="static/api.js?v=20260921a"></script>
+  <script src="static/app.js?v=20260921a"></script>
+  <script type="module" src="static/result-dialog/index.js?v=20260921a"></script>
 </body>
 </html>

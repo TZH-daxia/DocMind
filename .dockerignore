@@ -12,6 +12,7 @@ __pycache__
 .env.*
 !.env.example
 data
+data_preview_pdf
 logs
 *.log
 tests
