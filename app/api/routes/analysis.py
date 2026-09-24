@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.api.dependencies import get_analysis_service
 from app.schemas.analysis import AnalysisContext
 from app.schemas.file import UploadedDocument
+from app.schemas.submit import OrderSubmitRequest
 from app.service.analysis_service import AnalysisService
 
 router = APIRouter(prefix="/analysis", tags=["分析任务"])
@@ -131,6 +132,54 @@ async def search_customers(
 
 
 @router.get(
+    "/credit",
+    summary="委托客户的信用等级与信控提示",
+    response_description="信用等级、信控提示原文与合成后的展示文案",
+)
+async def credit_hint(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    fid: Annotated[str, Query(description="委托客户 ID")],
+    area: Annotated[
+        str,
+        Query(description="唯凯站点（站点中文名）；信控按站点分别校验"),
+    ] = "",
+) -> dict[str, Any]:
+    """选完委托客户后取信用等级与信控提示，显示在客户输入框下方。
+
+    口径与 poOrder 订单新增页一致（`newOrderAdd.vue` 的 `loadWtkdData`）：等级来自
+    客户主数据的 `creditlevel`，提示来自 `api/PubCredit` 的 `resultmessage`。
+    信控接口不可用或查询失败时降级为「只显示等级」，不阻断填写。
+    """
+
+    return await service.credit_hint(fid, area)
+
+
+@router.post(
+    "/submit",
+    summary="提交订单",
+    response_description="是否创建成功（ok）、订舱编号（order_code）与接口提示（message）",
+)
+async def submit_order(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    payload: OrderSubmitRequest,
+) -> dict[str, Any]:
+    """把弹窗里核对过的表单提交为 poOrder 订单（`api/ExHpoAxpline`）。
+
+    报文按需求文档《点击提交订单按钮》组装（固定值与派生规则见
+    `app/service/order_submit_service.py` 的 `build_submit_payload`）。
+    缺少操作人时按 poOrder 口径回「无操作人数据，请重新登录」；接口调用失败或
+    业务校验不通过时 `ok` 为 false，`message` 是给操作员看的原因。
+    """
+
+    return await service.submit_order(
+        form=payload.form,
+        order=payload.order,
+        czman=payload.czman,
+        ticket=payload.ticket,
+    )
+
+
+@router.get(
     "/ports",
     summary="搜索港口",
     response_description="候选港口列表（items）与港口主数据是否可用（enabled）",
@@ -149,6 +198,47 @@ async def search_ports(
     """
 
     return await service.search_ports(keyword)
+
+
+@router.get(
+    "/projects",
+    summary="按委托客户列出项目",
+    response_description="候选项目列表（items）与项目主数据是否可用（enabled）",
+)
+async def list_projects(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    fid: Annotated[str, Query(description="委托客户 ID（项目按客户归属）")],
+    keyword: Annotated[
+        str,
+        Query(description="可选：按项目名称 / 编码过滤"),
+    ] = "",
+) -> dict[str, Any]:
+    """列出某委托客户下的项目候选，供订单工具条右侧「项目」下拉选择。
+
+    口径与 poOrder 订单新增页一致：`usr_status == 1`、`comxz` 含 1、
+    `customxz != 2`，再按 `fid` 收敛；**不按站点过滤**（站点约束发生在选中之后
+    的校验）。未配置项目主数据接口时 `enabled` 为 false 且 `items` 为空。
+    """
+
+    return await service.list_projects(fid, keyword)
+
+
+@router.get(
+    "/sites",
+    summary="列出唯凯站点",
+    response_description="按分组聚合的站点候选（groups）与站点字典是否可用（enabled）",
+)
+async def list_sites(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """列出唯凯站点候选，供工具条「委托唯凯站点」下拉选择。
+
+    口径与 poOrder 订单新增页一致：取字典 `groupid == 101` 全量、按 `ready04`
+    分组，不做关键字过滤（下拉面板一次展示全部站点）。未配置主数据接口时
+    `enabled` 为 false 且 `groups` 为空，前端退化为只显示订单上下文带来的站点。
+    """
+
+    return await service.list_sites()
 
 
 @router.get(

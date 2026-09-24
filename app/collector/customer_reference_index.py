@@ -66,6 +66,12 @@ class CustomerReferenceIndex:
     def size(self) -> int:
         return len(self._by_id)
 
+    def creditlevel_of(self, customer_id: str) -> str:
+        """取某个客户的信用等级（A / B / B- / C）；查不到返回空串。"""
+
+        record = self._by_id.get(str(customer_id or "").strip())
+        return record.creditlevel if record is not None else ""
+
     @staticmethod
     def _index_into(
         target: dict[str, list[CustomerRecord]], text: str, record: CustomerRecord

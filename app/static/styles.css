@@ -16,6 +16,13 @@
   --red: #c55755;
   --red-soft: #fbe8e7;
   --shadow: 0 18px 40px rgba(28, 45, 57, 0.08);
+  /* 表格区滚动条占用的宽度：由 result-dialog/index.js 启动时量出并覆盖（见那里的说明）。
+     默认 0px —— 量之前按"没有滚动条"处理，避免首帧算错 */
+  --doc-scrollbar-w: 0px;
+  /* 下拉箭头：设计稿统一的 chevron-down（18×18 视口、1px 圆头、#3B85FB）。
+     工具条胶囊 / 委托客户「项目」段 / 日期控件三处共用同一枚 ——
+     原先这里是三份不同画法（SVG、7px 边框、实心三角），才出现"上下的下拉箭头不一致" */
+  --doc-caret-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M4.75736 6.99997L9 11.2426L13.2426 6.99997' stroke='%233B85FB' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 * {
@@ -803,8 +810,9 @@ select:focus {
 
 /* ---- 结果弹窗：左侧原件预览 + 右侧字段表单（Vue 3 渲染） ---- */
 .doc-dialog-mask {
-  /* 两栏列头的统一高度：左「源文件」/ 右「EXTRACTED FIELDS」共用，分割线才会对齐 */
-  --doc-head-h: 52px;
+  /* 两栏列头的统一高度：左「源文件」/ 右「订单工具条」共用，分割线才会对齐。
+     48px 取自 Figma 的工具条规格（Frame 91） */
+  --doc-head-h: 48px;
 
   position: fixed;
   inset: 0;
@@ -873,14 +881,18 @@ select:focus {
   text-transform: none;
 }
 
-/* 任务号水平居中，不因过长换行，超出省略 */
+/* 任务号要单行完整显示：既不限宽省略，也不换行。
+   这里给得起宽度 —— 列头横跨整个对话框（约 1480px），任务号位于 auto 列
+   （= 自身内容宽度），左右两列是 1fr 会自动让位，
+   所以放开原来的 340px 上限后既不会换行，也不会挤到左侧的眉标 */
 .doc-dialog-head-title .doc-dialog-task {
   min-width: 0;
-  max-width: 340px;
-  justify-self: center;
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
+  /* 覆盖 .doc-dialog-task 基础规则里的 word-break: break-all（那是为换行准备的），
+     显式声明不换行，避免不同浏览器对 nowrap 与 break-all 的组合处理不一致 */
+  word-break: normal;
+  justify-self: center;
+  text-align: center;
 }
 
 .doc-dialog-task {
@@ -1038,6 +1050,294 @@ select:focus {
   height: var(--doc-head-h, 52px);
   padding: 0 18px;
   border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* 右栏列头换成订单工具条：内边距交给工具条自己（Figma Frame 91：48px、白底、左右 24px） */
+.doc-dialog-form-head.is-toolbar {
+  padding: 0;
+  background: #ffffff;
+}
+
+.doc-order-toolbar {
+  display: flex;
+  align-items: center;
+  /* 编号靠左、其余 5 个组件靠右：右移由 .doc-order-group 的 flex: 1
+     与 .doc-order-chips 的 margin-left: auto 完成，这里保持 flex-start；
+     胶囊之间、以及最后一个胶囊到「服务项目」的间距都仍是 8px */
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  /* 右侧 = 输入框单元格的右内边距(18px) + 表格区滚动条宽度(--doc-scrollbar-w)：
+     工具条横跨整栏、不在滚动容器里，不补这段就会比输入框右边界多出一个滚动条宽度
+     （同 .doc-dialog-foot 的处理，见 index.js 里 measureScrollbarWidth 的说明）；
+     左侧 24px 与标签列对齐 */
+  padding: 0 calc(18px + var(--doc-scrollbar-w)) 0 24px;
+}
+
+/* 左半：编号 + 四个下拉（Figma Frame 108，组间距 16px）。
+   flex: 1 让本组占满「服务项目」左侧的剩余宽度，好把四个胶囊推到组右端
+   （见 .doc-order-chips 的 margin-left: auto），使最右端「服务项目」的右边界
+   与下方输入框的右边界齐平；宽度不足时本组先收缩，再由编号槽让步 */
+.doc-order-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 弹窗头部的订舱编号（提交成功后 poOrder 返回，放在叉号左侧）。
+   原先放在工具条的编号槽里，但 17 位编号会把右侧四个胶囊挤出可视区造成遮挡，
+   所以移到头部；观感沿用工具条那枚琥珀色圆点编号 */
+.doc-dialog-order-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* 头部空间不足时吃省略号（完整值在 title 里），不去挤别的组件 */
+  max-width: 320px;
+  overflow: hidden;
+  color: #dd9e4c;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.doc-dialog-order-code-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 22px;
+  background: #dd9e4c;
+}
+
+/* 编号文本：被压缩时吃省略号，而不是把字硬切掉（完整值在 title 里）。 */
+.doc-dialog-order-code-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 四个下拉的容器（Figma Frame 109，间距 8px）。
+   margin-left: auto 把四个胶囊（连同右邻的 8px「服务项目」）整体推到右端：
+   编号槽留在左边，其余 5 个组件右对齐，右边界与下方输入框右边界上下对齐 */
+.doc-order-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* 单个胶囊（Figma Frame 102~105）：32px 高、6/8 内边距、间距 4px、
+   #F9FAFC 底 + #E5E7EB 边 + 4px 圆角。
+   未选中时显示的是字段名（深色），选中后显示取值（强调蓝），
+   所以设计稿上第二个胶囊直接是蓝色的「空运」。
+   position: relative 是给展开的菜单当定位参照（见 ToolbarSelect.js） */
+.doc-order-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #f9fafc;
+}
+
+/* 胶囊里显示当前值的按钮：文字与下拉箭头都在按钮**内部**，
+   所以整块（包括只点箭头）都是可点击区域。
+   原来是原生 select —— 它的弹出层由操作系统绘制、样式改不了，
+   所以换成自定义浮层（见 ToolbarSelect.js），这里只保留排版 */
+.doc-order-chip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #1e293b;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 17px;
+  white-space: nowrap;
+  outline: none;
+  cursor: pointer;
+}
+
+/* 隐身的最宽文案：把占位与全部选项文案叠在同一格（grid 同格叠加），
+   容器宽度自然等于最宽的那条 —— 胶囊宽度因此固定，
+   从占位切到取值、或在长度不同的值之间切换，宽度都不变 */
+.doc-order-chip-sizer {
+  display: grid;
+  visibility: hidden;
+}
+
+.doc-order-chip-sizer > span {
+  grid-area: 1 / 1;
+}
+
+/* 当前值叠在 sizer 上方，绝对定位因而不参与宽度计算 */
+.doc-order-chip-label {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.doc-order-chip.is-set .doc-order-chip-trigger {
+  color: #3b85fb;
+}
+
+.doc-order-chip-trigger:disabled {
+  cursor: default;
+}
+
+/* 展开的菜单：复用表单里搜索下拉的菜单样式（.doc-dialog-combobox-menu / -option），
+   只把层级抬到表头之上（thead 是 sticky z-index: 1） */
+.doc-order-menu {
+  z-index: 30;
+}
+
+/* 「站点选择」面板：对齐 poOrder 的 areaSelect（src/components/smallTemplate/areaSelect.vue）
+   —— 顶部「站点选择」标题 + 站点按分组分栏。
+   分栏用列优先铺两行（grid-auto-flow: column + 两行模板）：第 1 列放第 1、2 组，
+   第 2 列放第 3、4 组……与 poOrder 那张「偶数索引组在上、奇数索引组在下」的表格等价 */
+.doc-site-menu {
+  /* 面板以分组为列，比普通下拉宽：单独放宽上限并允许纵向滚动 */
+  min-width: 100%;
+  width: max-content;
+  max-width: min(560px, calc(47vw - 200px));
+  max-height: 320px;
+  padding: 6px 8px 8px;
+}
+
+.doc-site-menu-title {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.doc-site-menu-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, minmax(0, auto));
+  gap: 2px 16px;
+}
+
+.doc-site-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 104px;
+}
+
+.doc-site-menu-group-title {
+  /* 左内边距与 .doc-site-menu-option 一致（6px），区域名才和下面站点的文字左对齐；
+     用 padding 而非 margin，是为了让对齐基准和选项一致 */
+  margin: 0;
+  padding: 3px 6px 1px;
+  color: #97a3b6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 单个站点：文案用字典原文（如「上海丨SHA」） */
+.doc-site-menu-option {
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.doc-site-menu-option:hover,
+.doc-site-menu-option.is-active {
+  background: var(--blue-soft);
+}
+
+.doc-site-menu-option.is-active {
+  color: var(--blue);
+}
+
+.doc-site-menu-empty {
+  margin: 2px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 下拉箭头：18×18 图标位 + 统一的 chevron（见 :root 的 --doc-caret-icon）。
+   图标自带内边距、已画在视口正中，所以居中铺满即可，无需再做位移计算 */
+.doc-order-chip-caret {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  background: var(--doc-caret-icon) center / 18px 18px no-repeat;
+}
+
+/* 服务项目（带 icon 按钮）：10% 蓝底 + 30% 蓝边 + 蓝字，
+   尺寸与左侧四个胶囊一致（32px / 6-8 内边距 / 4px 圆角） */
+.doc-order-services {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 6px 8px;
+  border: 1px solid rgba(59, 133, 251, 0.3);
+  border-radius: 4px;
+  background: rgba(59, 133, 251, 0.1);
+  color: #3b85fb;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 17px;
+  cursor: pointer;
+}
+
+.doc-order-services:hover {
+  background: rgba(59, 133, 251, 0.18);
+}
+
+/* 服务项目图标：直接内联设计稿 SVG（18×18 视口，内含 1px 内缩的 16×16 蓝色圆角方块，
+   方块内以非零填充的镂空方式挖出两行「勾 + 短横」，透出按钮底色） */
+.doc-order-services-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 18px 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M1 4.33333C1 3.44928 1.35119 2.60143 1.97631 1.97631C2.60143 1.35119 3.44928 1 4.33333 1H13.6667C14.5507 1 15.3986 1.35119 16.0237 1.97631C16.6488 2.60143 17 3.44928 17 4.33333V13.6667C17 14.5507 16.6488 15.3986 16.0237 16.0237C15.3986 16.6488 14.5507 17 13.6667 17H4.33333C3.44928 17 2.60143 16.6488 1.97631 16.0237C1.35119 15.3986 1 14.5507 1 13.6667V4.33333ZM9.66667 12.3333C9.66667 12.5101 9.7369 12.6797 9.86193 12.8047C9.98695 12.9298 10.1565 13 10.3333 13H13.3333C13.5101 13 13.6797 12.9298 13.8047 12.8047C13.9298 12.6797 14 12.5101 14 12.3333C14 12.1565 13.9298 11.987 13.8047 11.8619C13.6797 11.7369 13.5101 11.6667 13.3333 11.6667H10.3333C10.1565 11.6667 9.98695 11.7369 9.86193 11.8619C9.7369 11.987 9.66667 12.1565 9.66667 12.3333ZM10.3333 6.33333C10.1565 6.33333 9.98695 6.40357 9.86193 6.5286C9.7369 6.65362 9.66667 6.82319 9.66667 7C9.66667 7.17681 9.7369 7.34638 9.86193 7.4714C9.98695 7.59643 10.1565 7.66667 10.3333 7.66667H13.3333C13.5101 7.66667 13.6797 7.59643 13.8047 7.4714C13.9298 7.34638 14 7.17681 14 7C14 6.82319 13.9298 6.65362 13.8047 6.5286C13.6797 6.40357 13.5101 6.33333 13.3333 6.33333H10.3333ZM8.13867 10.528C8.07674 10.4659 8.00317 10.4167 7.92218 10.3831C7.84119 10.3494 7.75436 10.3321 7.66667 10.3321C7.57898 10.3321 7.49215 10.3494 7.41116 10.3831C7.33016 10.4167 7.25659 10.4659 7.19467 10.528L5.66667 12.0573L5.14133 11.5307C5.01633 11.4055 4.84671 11.3351 4.66981 11.335C4.4929 11.3348 4.32318 11.405 4.198 11.53C4.07282 11.655 4.00242 11.8246 4.0023 12.0015C4.00217 12.1784 4.07233 12.3482 4.19733 12.4733L5.19467 13.472C5.25659 13.5341 5.33016 13.5833 5.41116 13.617C5.49215 13.6506 5.57898 13.6679 5.66667 13.6679C5.75436 13.6679 5.84119 13.6506 5.92218 13.617C6.00317 13.5833 6.07674 13.5341 6.13867 13.472L8.13867 11.472C8.20075 11.4101 8.25001 11.3365 8.28362 11.2555C8.31723 11.1745 8.33453 11.0877 8.33453 11C8.33453 10.9123 8.31723 10.8255 8.28362 10.7445C8.25001 10.6635 8.20075 10.5899 8.13867 10.528ZM8.13867 6.13867C8.20065 6.07668 8.24982 6.0031 8.28336 5.92211C8.31691 5.84113 8.33418 5.75433 8.33418 5.66667C8.33418 5.57901 8.31691 5.49221 8.28336 5.41122C8.24982 5.33024 8.20065 5.25665 8.13867 5.19467C8.07668 5.13268 8.0031 5.08351 7.92211 5.04997C7.84113 5.01642 7.75433 4.99916 7.66667 4.99916C7.57901 4.99916 7.49221 5.01642 7.41122 5.04997C7.33024 5.08351 7.25665 5.13268 7.19467 5.19467L5.66667 6.724L5.14133 6.19733C5.01615 6.07215 4.84637 6.00182 4.66933 6.00182C4.4923 6.00182 4.32252 6.07215 4.19733 6.19733C4.07215 6.32252 4.00182 6.4923 4.00182 6.66933C4.00182 6.84637 4.07215 7.01615 4.19733 7.14133L5.19467 8.13867C5.25659 8.20075 5.33016 8.25001 5.41116 8.28362C5.49215 8.31723 5.57898 8.33453 5.66667 8.33453C5.75436 8.33453 5.84119 8.31723 5.92218 8.28362C6.00317 8.25001 6.07674 8.20075 6.13867 8.13867L8.13867 6.13867Z' fill='%233B85FB'/%3E%3C/svg%3E");
+}
+
+/* 底部操作条：提交按钮从列头搬到这里（具体位置待设计确认）。
+   左右内边距与表单对齐：右 18px = 输入框单元格的右内边距（.doc-dialog-value），
+   让「提交订单」的右边界与输入框右边界落在同一条竖线上；左 24px = 标签列的左内边距 */
+.doc-dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  /* 右内边距 = 输入框单元格的右内边距(18px) + 表格区滚动条宽度：
+     底部操作条横跨整栏、不在滚动容器里，不补上这段就会比输入框右边界多出一个滚动条宽度 */
+  padding: 12px calc(18px + var(--doc-scrollbar-w)) 12px 24px;
+  border-top: 1px solid var(--line);
   background: var(--surface);
 }
 
@@ -1211,9 +1511,8 @@ select:focus {
   flex: 0 0 auto;
 }
 
-/* 「收起」与「提交」尺寸完全一致：76×36、14px/500、圆角 8px，只有配色区分主次。
-   宽度用 min-width 兜底，不同字体渲染下也保持等宽 */
-.doc-dialog-collapse,
+/* 提交订单：弹窗底部的主操作，高 36px、左右 24px、14px/500、圆角 8px。
+   宽度跟着文案走（min-width 76px 是设计稿给「提交」两字的下限，现在是「提交订单」四字） */
 .doc-dialog-submit {
   display: inline-flex;
   align-items: center;
@@ -1229,16 +1528,50 @@ select:focus {
   line-height: 20px;
 }
 
-/* 次要操作：白底描边 */
+/* 收起：设计稿从文字按钮改成右上角的圆形叉号 */
 .doc-dialog-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid var(--line);
+  border-radius: 50%;
   background: var(--surface);
-  color: var(--navy);
+  cursor: pointer;
 }
 
 .doc-dialog-collapse:hover {
-  /* 悬浮只压暗底色：描边与文字保持原样，不出现一圈蓝边（与「提交」的悬浮反馈一致） */
   background: var(--canvas);
+}
+
+/* 叉号用两条 1.5px 的短线交叉，避免依赖图标字体 */
+.doc-dialog-collapse-icon {
+  position: relative;
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+.doc-dialog-collapse-icon::before,
+.doc-dialog-collapse-icon::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
+.doc-dialog-collapse-icon::before {
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.doc-dialog-collapse-icon::after {
+  transform: translateY(-50%) rotate(-45deg);
 }
 
 .doc-dialog-date {
@@ -1274,13 +1607,14 @@ select:focus {
   color: #9aa8af;
 }
 
+/* 与其它下拉统一为同一枚 chevron（原来是 9×5 的实心三角，形状和颜色都不同）。
+   颜色随图标自带的 #3B85FB；若要保留中性灰，把 background 换成 mask 即可：
+   mask: var(--doc-caret-icon) center / 18px 18px no-repeat + background-color: var(--muted) */
 .doc-dialog-date-caret {
   flex: 0 0 auto;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid var(--muted);
+  width: 18px;
+  height: 18px;
+  background: var(--doc-caret-icon) center / 18px 18px no-repeat;
 }
 
 .doc-date-picker-layer {
@@ -1450,6 +1784,9 @@ select:focus {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  /* 始终保留滚动条槽位：内容变高变矮时表格宽度不变，
+     否则底部操作条的补偿（--doc-scrollbar-w）会在滚动条消失时算错 */
+  scrollbar-gutter: stable;
 }
 
 .doc-dialog-table {
@@ -1462,6 +1799,8 @@ select:focus {
   position: sticky;
   top: 0;
   z-index: 1;
+  /* 左侧内边距与下方字段标签一致（.doc-dialog-field 的左内边距就是 18px），
+     让表头「项目」与字段名称左边对齐 */
   padding: 10px 18px;
   border-bottom: 1px solid var(--line);
   background: var(--canvas);
@@ -1470,8 +1809,18 @@ select:focus {
   text-align: left;
 }
 
+/* 「内容」列表头的文字与下方输入框左对齐：输入框所在单元格（.doc-dialog-value）左内边距为 0，
+   所以这里也去掉左内边距；「项目」列沿用上面的 18px，与字段标签对齐 */
+.doc-dialog-table thead th + th {
+  padding-left: 0;
+}
+
+/* 标签列收缩到内容宽度（最宽标签 + 8px 间距 + 40px 标记列 + 8px 右内边距），剩余宽度全部让给输入框：
+   输入框左边界 =「待审核/缺失」标记右边缘 + 8px 间距（见 .doc-dialog-field 的右内边距）。
+   width: 1px 是「收缩到内容」的惯用写法：标签 nowrap 时该列 min-content = max-content，
+   表格分配多余宽度时这一列的增量份额为 0，于是宽度完全由内容决定 */
 .doc-dialog-table thead th:first-child {
-  width: 282px;
+  width: 1px;
 }
 
 .doc-dialog-table tbody tr {
@@ -1487,7 +1836,8 @@ select:focus {
    注意：若直接把 display:flex 写在 th 上，浏览器会为它生成匿名 table-cell，
    vertical-align 随之失效——行被右侧内容撑高时标签就会贴在顶部，无法上下居中。 */
 .doc-dialog-field {
-  padding: 12px 14px 12px 18px;
+  /* 右侧内边距 =「待审核/缺失」标记与输入框之间的间距：留 8px，不让标记贴住输入框边框 */
+  padding: 12px 8px 12px 18px;
   color: var(--navy);
   font-weight: 600;
   text-align: left;
@@ -1519,10 +1869,161 @@ select:focus {
   vertical-align: top;
 }
 
-.doc-dialog-markers {
+/* 委托客户 · 项目 · 本票客户客服联系人：三段合并成一条横栏（对齐 poOrder 订单新增版式）。
+   客户名占满剩余宽度，段间以竖线分隔，右端是本票客户客服联系人按钮。 */
+.doc-dialog-customer-bar {
   display: flex;
   align-items: center;
+  gap: 8px;
+  /* 上下内边距为 0：整行高度由内部内容撑出，正好等于其它字段输入框的高度
+     （推导见 .doc-dialog-customer-bar-main .doc-dialog-input 的说明）。
+     左侧不留内边距：这段 12px 留白挪到里面的 input 自己身上，
+     这样 input 左沿就紧贴横栏边框内侧，下拉菜单（left: 0）才能和输入框左对齐 */
+  padding: 0 8px 0 0;
+  border: 1px solid var(--line);
+  /* 圆角与其它输入框一致（原为 8px，比下面的输入框更圆，并排看会不一致） */
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+/* 里面的输入框不再自己画边框，聚焦高亮改由整条横栏承担 */
+.doc-dialog-customer-bar:focus-within {
+  border-color: var(--blue);
+}
+
+/* 客户名段：复用委托客户下拉，去掉它自身的边框与底色融进横栏 */
+.doc-dialog-customer-bar-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 客户名：横栏本身就是这一行的输入框，所以去掉 input 自己的边框与底色，消除「框里套框」。
+   旧注释担心过"去掉边框会被当成静态文本"，这里用三点保住可输入性：横栏保留完整边框、
+   段内有下拉箭头、并补上 :focus-within 高亮。
+   左右内边距：左侧 12px 改由 input 自己承担（原先是横栏的 padding-left）——
+   这样 input 左沿紧贴横栏边框内侧，下拉菜单的 left: 0 就能与输入框左对齐，
+   而文字的视觉缩进不变；右侧交给横栏的右内边距与 gap。
+   上下内边距保持 6px 是关键 —— input 少了上下各 1px 边框，横栏又补回上下各 1px 边框，
+   两边相抵，于是横栏高度 = 其它输入框高度，宽高天然齐平（不用写死具体像素） */
+.doc-dialog-customer-bar-main .doc-dialog-input {
+  padding-left: 12px;
+  padding-right: 0;
+  border: none;
+  background: transparent;
+  text-overflow: ellipsis;
+}
+
+.doc-dialog-customer-bar-divider {
+  flex: 0 0 auto;
+  /* 撑满横栏内高、上下不留空隙（设计稿 Rectangle 76 就是 align-self: stretch）。
+     刻意不写死 height：横栏高度由客户名输入框撑出，stretch 能自动贴齐上下边框 */
+  align-self: stretch;
+  width: 1px;
+  background: var(--line);
+}
+
+/* 项目段：标签 + 值 + 下拉箭头 */
+.doc-dialog-customer-bar-project {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--ink);
+  /* 字号跟随表格（12px），与客户名输入框、下面各行的字段保持一致 */
+  font: inherit;
+  cursor: pointer;
+}
+
+.doc-dialog-customer-bar-project:hover:not(:disabled) {
+  background: var(--canvas);
+}
+
+.doc-dialog-customer-bar-project:disabled {
+  cursor: default;
+}
+
+.doc-dialog-customer-bar-key {
+  color: var(--muted);
+}
+
+.doc-dialog-customer-bar-value {
+  color: var(--ink);
+}
+
+/* 与工具条胶囊同一枚图标（设计稿 Frame 99 的 Icon 就是 Rectangle 9，和 Frame 102~105 同源）。
+   原来是 7px / 1.5px 的边框画法，比工具条的箭头更粗更尖 ——
+   而它就在工具条下一行，两者并排最容易被看出不是同一个图标 */
+.doc-dialog-customer-bar-caret {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  background: var(--doc-caret-icon) center / 18px 18px no-repeat;
+}
+
+/* 本票客户客服联系人：横栏右端的胶囊按钮 */
+.doc-dialog-customer-bar-rel {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 项目下拉：触发按钮沿用横栏里的「项目」段样式，面板复用搜索下拉的菜单类。
+   面板向左展开（right: 0）—— 项目段在横栏中段、右边紧邻「本票客户客服联系人」，
+   向左展开不会顶到弹窗右边界；宽度也压在右栏之内，避免给表格区带出横向滚动条
+   （表格区是 overflow:auto，绝对定位的面板同样会被它裁掉） */
+.doc-project-select {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.doc-project-menu {
+  left: auto;
+  right: 0;
+  min-width: 260px;
+  max-width: min(340px, calc(47vw - 200px));
+  z-index: 40;
+}
+
+/* 空候选取一行「无数据」：与 poOrder 的 el-select 空态一致。
+   不显示的话面板只剩一条白色空条，看起来像坏了 */
+.doc-project-empty {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.doc-dialog-customer-bar-rel:hover:not(:disabled) {
+  background: #d6e7ff;
+}
+
+.doc-dialog-customer-bar-rel:disabled {
+  cursor: default;
+}
+
+/* 项目/联系人主数据未接入时，这两段保持设计稿的常态样式，不变灰：
+   不可用只体现在 disabled（点不动）与 title 的接口说明上——
+   用灰底会让人误以为这是一条"已完成只读"的行，和已提交态混淆 */
+
+/* 标记列：定宽 40px；「未定位」与「待审核/缺失」上下堆叠、居中对齐，
+   这样标记列的右沿就是输入框的左边界（见 .doc-dialog-field 的右内边距） */
+.doc-dialog-markers {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   flex: 0 0 auto;
 }
 
@@ -1673,7 +2174,18 @@ textarea.doc-dialog-input {
   position: absolute;
   top: calc(100% + 2px);
   left: 0;
-  right: 0;
+  /* 宽度跟随最长的候选项，不再被输入框锁死（原来是 right: 0，菜单被压成输入框那么宽，
+     公司名一律吃省略号）。
+     数据依据：客户主数据 14706 条里最长的公司名约 360px（仅 2 条超过 360px，
+     99.8% 在 300px 以内），加上客户编码与内边距约需 432px，所以上限取 432px。
+     第二个上限用于把菜单限制在右栏之内：对话框宽 min(1480px, 94vw) → 右栏宽 min(740px, 47vw)，
+     菜单左边界离栏左沿约 204px（标签列 + 横栏左内边距），这里按 240px 留余量；
+     这样任何屏幕宽度下都不会顶出右栏、不会给表格区带出横向滚动条。
+     min-width: 100% 保证菜单不比输入框窄（min-width 优先于 max-width）。 */
+  right: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(432px, calc(47vw - 240px));
   z-index: 20;
   max-height: 220px;
   overflow-y: auto;

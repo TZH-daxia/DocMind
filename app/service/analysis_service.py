@@ -52,7 +52,10 @@ from app.schemas.po_order import (
 )
 from app.service.customer_service import CustomerService
 from app.service.port_normalization_service import PortNormalizationService
+from app.service.project_service import ProjectService
+from app.service.order_submit_service import OrderSubmitService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
+from app.service.site_service import SiteService
 from app.storage.file_store import FileStore
 from app.workflow.errors import TaskCancelledError, TaskPausedError
 from app.workflow.events import WorkflowEvent, WorkflowEventPublisher, now_iso
@@ -346,6 +349,9 @@ class AnalysisService(WorkflowEventPublisher):
         self.requirement_service = PoOrderRequirementService()
         self.port_service = PortNormalizationService(settings, self.file_store)
         self.customer_service = CustomerService(settings, self.file_store)
+        self.site_service = SiteService(settings, self.file_store)
+        self.order_submit_service = OrderSubmitService(settings)
+        self.project_service = ProjectService(settings, self.file_store)
         # 并发闸门按名字惰性创建：信号量必须在事件循环内构造，而服务是进程级
         # 单例（启动阶段与首次请求都会取用），因此延迟到真正执行任务时创建
         self._gates: dict[str, asyncio.Semaphore] = {}
@@ -1369,6 +1375,33 @@ class AnalysisService(WorkflowEventPublisher):
             "items": [item.model_dump(mode="json") for item in candidates],
         }
 
+    async def credit_hint(self, fid: str, area: str = "") -> dict[str, Any]:
+        """取委托客户的信用等级与信控提示（显示在客户输入框下方）。
+
+        口径与 poOrder 订单新增页一致：等级来自客户主数据 `creditlevel`，
+        提示来自 `api/PubCredit` 的 `resultmessage`；接口不可用时只回等级。
+        """
+
+        outcome = await self.customer_service.credit_hint(fid, area)
+        return outcome.model_dump(mode="json")
+
+    async def submit_order(
+        self,
+        form: dict[str, Any],
+        order: dict[str, Any],
+        czman: str,
+        ticket: str = "",
+    ) -> dict[str, Any]:
+        """提交订单：组装报文并调用 poOrder 的提交接口。
+
+        表单与订单上下文由前端给出（弹窗里可能被人工改过），后端只按报文契约取值。
+        """
+
+        outcome = await self.order_submit_service.submit(
+            form=form, order=order, czman=czman, ticket=ticket
+        )
+        return outcome.model_dump(mode="json")
+
     async def search_ports(self, keyword: str) -> dict[str, Any]:
         """按关键字搜索港口主数据，供前端「输入即下拉」挑三字码。
 
@@ -1380,6 +1413,33 @@ class AnalysisService(WorkflowEventPublisher):
         return {
             "enabled": self.port_service.enabled,
             "items": [item.model_dump(mode="json") for item in candidates],
+        }
+
+    async def list_projects(self, fid: str, keyword: str = "") -> dict[str, Any]:
+        """列出某委托客户下的项目候选，供「项目」下拉选择。
+
+        口径与 poOrder 订单新增页一致（`usr_status` / `comxz` / `customxz`
+        过滤后按 `fid` 收敛，不按站点过滤）；返回 items（候选项目）与
+        enabled（项目主数据是否可用）。
+        """
+
+        candidates = await self.project_service.list_by_customer(fid, keyword)
+        return {
+            "enabled": self.project_service.enabled,
+            "items": [item.model_dump(mode="json") for item in candidates],
+        }
+
+    async def list_sites(self) -> dict[str, Any]:
+        """列出唯凯站点候选（按分组聚合），供工具条「委托唯凯站点」下拉。
+
+        口径与 poOrder 订单新增页一致：字典全量、按分组分栏，不做关键字过滤；
+        返回 groups（分组与组内站点）与 enabled（站点字典是否可用）。
+        """
+
+        groups = await self.site_service.list_groups()
+        return {
+            "enabled": self.site_service.enabled,
+            "groups": [group.model_dump(mode="json") for group in groups],
         }
 
     async def _locate_field_locations(

@@ -20,6 +20,10 @@ class CustomerRecord(BaseModel):
     usr_status: int = 0
     # 2 = 不参与新业务；poOrder 新增订单会排除 customxz == 2
     customxz: int = 0
+    # 信用等级：A / B / B- / C，空表示未评级。
+    # poOrder 选完委托客户后显示的「A类」「C类」就来自这里
+    #（newOrderAdd.vue 的 loadWtkdData：先从 wtkhUseful 取 creditlevel）
+    creditlevel: str = ""
     # 增量拉取用的时间戳
     timestamp: int = 0
 
@@ -38,6 +42,25 @@ class CustomerReferenceCache(BaseModel):
 
     fetched_at: str
     records: list[CustomerRecord] = Field(default_factory=list)
+
+
+class CustomerCreditHint(BaseModel):
+    """选完委托客户后、显示在其输入框下方的信用等级与信控提示。
+
+    文案口径与 poOrder 一致（`newOrderAdd.vue` 的 `loadWtkdData`）：
+    - `resultstatus == 0`（通过）：只显示等级，如「A类」
+    - `resultstatus != 0`（受限）：等级 + 接口给的提示，
+      如「C类,该客户是C类客户,需付款买单才能继续操作」
+    """
+
+    enabled: bool = Field(default=False, description="信控接口是否可用")
+    level: str = Field(
+        default="", description="信用等级原始值：A / B / B- / C；空表示未评级"
+    )
+    message: str = Field(default="", description="信控提示原文；通过时为空")
+    hint: str = Field(
+        default="", description="合成后的展示文案，直接显示在委托客户输入框下方"
+    )
 
 
 class CustomerValidationOutcome(BaseModel):

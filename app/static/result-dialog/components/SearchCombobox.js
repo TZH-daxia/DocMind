@@ -287,11 +287,15 @@ export const SearchCombobox = {
       this.options = [];
       this.open = false;
       this.activeIndex = -1;
+      // 选中后主动失焦：候选项用 mousedown.prevent 保住了焦点，不 blur 的话
+      // 输入框会一直留着光标（看起来像"还没选完"）
+      this.$refs.input?.blur();
     },
   },
   template: `
     <div class="doc-dialog-combobox">
       <input
+        ref="input"
         class="doc-dialog-input"
         :class="{ 'is-pending': needsPick }"
         type="text"

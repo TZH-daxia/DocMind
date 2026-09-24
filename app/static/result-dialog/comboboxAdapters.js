@@ -1,6 +1,9 @@
 import { searchCustomers, searchPorts } from "./api.js";
 
-// 委托客户：候选来自客户主数据，选中后回填客户 ID（与 poOrder 一致）
+// 委托客户：候选来自客户主数据，选中后回填客户 ID（与 poOrder 一致）。
+// 注：客户主数据（PubFCustom）没有站点字段、接口也不按站点收敛（实测 area 参数
+// 传空/上海/宁波返回条数都是 14706 条），所以候选不做站点过滤。
+// poOrder 里按站点过滤的是「委托项目」wtxm / 供应商等，不是委托客户
 export const CUSTOMER_COMBOBOX = {
   noun: "客户",
   search: searchCustomers,

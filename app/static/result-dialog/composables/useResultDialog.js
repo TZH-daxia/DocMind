@@ -1,6 +1,20 @@
-import { fetchRecentFiles, fetchResult, fetchTaskStatus, pageImageUrl } from "../api.js";
+import {
+  fetchProjects,
+  fetchRecentFiles,
+  fetchResult,
+  fetchSites,
+  fetchTaskStatus,
+  pageImageUrl,
+  submitOrder,
+} from "../api.js";
+import { currentTicket, currentUserDom, currentUserName } from "../currentUser.js";
 import { loadDraftForm, rememberDraftForm } from "../draftForms.js";
-import { loadSubmittedTaskIds, rememberSubmittedTask } from "../submittedTasks.js";
+import {
+  loadOrderCode,
+  loadSubmittedTaskIds,
+  rememberOrderCode,
+  rememberSubmittedTask,
+} from "../submittedTasks.js";
 import {
   DATE_VALUE_PATTERN,
   FIELD_CONTROLS,
@@ -56,6 +70,9 @@ async function loadTask(taskId) {
   dialogState.taskId = taskId;
   // 已提交状态跟着任务走：刷新页面后也从本地记录恢复，按钮仍是「已提交」
   dialogState.submitted = submittedTaskIds.has(String(taskId));
+  // 订舱编号同样跟着任务走：切任务、刷新页面后仍显示（在弹窗头部的编号位上）；
+  // 该任务没提交过就置空，避免把上一个任务的编号带过来
+  dialogState.orderCode = loadOrderCode(taskId);
   dialogState.loading = true;
   dialogState.error = "";
   try {
@@ -243,12 +260,30 @@ function applyResult(result, taskId) {
   dialogState.error = "";
 }
 
+// 站点字典候选：全局参考数据、与任务无关，拉一次即可（每次打开弹窗都会调用，
+// 用 loaded 标志避免重复请求）。失败不阻断弹窗：静默留空，胶囊仍显示订单上下文
+// 带来的站点原值
+async function loadSiteGroups() {
+  if (dialogState.siteGroupsLoaded) {
+    return;
+  }
+  dialogState.siteGroupsLoaded = true;
+  try {
+    const payload = await fetchSites();
+    dialogState.siteGroups = payload.groups || [];
+  } catch {
+    dialogState.siteGroups = [];
+  }
+}
+
 export const resultDialog = {
   async open(taskId) {
     if (!taskId) {
       return;
     }
     dialogState.visible = true;
+    // 站点候选与任务无关，不等它、不阻塞弹窗打开
+    loadSiteGroups();
     // 从主页面选了另一个文件打开弹窗时，先把上一个任务填过的内容存下来
     if (dialogState.taskId && dialogState.taskId !== taskId) {
       rememberForm(dialogState.taskId);
@@ -305,13 +340,106 @@ export const resultDialog = {
     dialogState.highlightBoxes = own?.length ? own : fallback || [];
   },
 
-  submit() {
-    // 只做本地必填校验，不关闭弹窗：远程校验通过后才收起（见 onSubmit）
+  async submit() {
+    // 先做本地必填校验（必填项在 constants.js 的 REQUIRED_FIELDS），再提交给后端。
+    // 本地不通过就直接返回，连接口都不打
     const errors = validateBeforeSubmit(dialogState.form);
     dialogState.errors = errors;
     if (Object.keys(errors).length) {
       return { ok: false, errors, firstError: firstErrorField(errors) };
     }
-    return { ok: true, errors: {}, firstError: null };
+    // 订舱操作要进报文的 czlx，不能为空：工具条默认已给「自货」，这里再兜一道，
+    // 避免重置/异常情况下空值漏给接口
+    if (!String(dialogState.order.czlx || "").trim()) {
+      return {
+        ok: false,
+        errors: {},
+        firstError: null,
+        message: "请先选择「订舱操作」",
+      };
+    }
+    // 「项目」(gid) 是按客户条件必填的：该委托客户下**有**可选项目时必须选一个；
+    // 一个都没有（有些客户没建项目）则留空即可——所以它不能放进 REQUIRED_FIELDS，
+    // 只能在这里按客户实际有无候选项判断
+    if (!String(dialogState.form.gid || "").trim()) {
+      const customerId = String(dialogState.form.fid || "").trim();
+      if (/^\d+$/.test(customerId)) {
+        try {
+          const projectPayload = await fetchProjects(customerId);
+          if ((projectPayload.items || []).length) {
+            dialogState.errors = { ...dialogState.errors, gid: true };
+            return {
+              ok: false,
+              errors: dialogState.errors,
+              firstError: "gid",
+              message: "该委托客户有可选项目，请先选择「项目」",
+            };
+          }
+        } catch {
+          // 项目主数据拿不到：不在这里拦，留给后端与人工核对
+        }
+      }
+    }
+    if (dialogState.submitting) {
+      // 上一次还没回来：避免连点造成重复下单
+      return { ok: false, errors: {}, firstError: null, busy: true };
+    }
+    dialogState.submitting = true;
+    try {
+      const outcome = await submitOrder({
+        form: dialogState.form,
+        // 订单上下文给副本：后端只读，避免把响应字段写回响应式对象。
+        // dom（部门）也在这里带上：poOrder 的列表查询默认按部门过滤，缺了会让新单
+        // 在综合查询里查不到；开发期用 ?dom= 传，缺省由后端回落「出口部」
+        order: { ...dialogState.order, dom: currentUserDom() },
+        // 当前用户（登录名）= 报文的 czman 与 customerRelList[].addman。生产环境由官网
+        // 传入，开发期由 currentUser.js 从 URL 参数 / poOrder 的 Cookie 兜底
+        czman: currentUserName(),
+        ticket: currentTicket(),
+      });
+      if (!outcome.ok) {
+        // 接口给出的原因原样带出去（缺操作人 / 客户信控 / 后端异常）
+        return {
+          ok: false,
+          errors: {},
+          firstError: null,
+          message: outcome.message || "提交失败",
+        };
+      }
+      // 订舱编号显示在弹窗头部、叉号左侧（state.orderCode）。
+      // 以后端返回的 order_code 为准；万一后端那层没取到（例如服务还没重启、
+      // 或 poOrder 又换了措辞），再按编号格式从接口提示里兜一次底：
+      // 形如 BOAE2609240001PVG（前缀 + 日期 + 流水 + 始发港）
+      const orderCode =
+        outcome.order_code ||
+        // poOrder 的原始响应里编号在 resultno；万一后端那层没读到，这里也能兜住
+        String(outcome.response?.resultno || "") ||
+        (/[A-Z]{2,}[0-9]{6,}[A-Z]*/.exec(String(outcome.message || "")) ||
+          [""])[0];
+      if (orderCode) {
+        dialogState.orderCode = orderCode;
+        // 落本地：切到别的任务再切回来、甚至刷新页面，编号仍在（按任务存）
+        rememberOrderCode(dialogState.taskId, orderCode);
+      }
+      // 标记已提交：页签变绿 + 按钮置灰（含 localStorage 持久化，刷新后仍在）
+      resultDialog.markSubmitted(dialogState.taskId);
+      return {
+        ok: true,
+        errors: {},
+        firstError: null,
+        // 用兜底后的编号：提示文案与编号槽显示的是同一个值
+        orderCode,
+        message: outcome.message || "",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        errors: {},
+        firstError: null,
+        message: error?.message || "提交接口调用失败，请稍后重试",
+      };
+    } finally {
+      dialogState.submitting = false;
+    }
   },
 };

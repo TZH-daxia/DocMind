@@ -60,5 +60,6 @@ class CustomerReferenceCollector:
             ename=text("ename"),
             usr_status=_to_int(item.get("usr_status")),
             customxz=_to_int(item.get("customxz")),
+            creditlevel=text("creditlevel"),
             timestamp=_to_int(item.get("timestamp")),
         )

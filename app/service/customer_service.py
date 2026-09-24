@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from app.collector.credit_collector import CreditReferenceCollector
 from app.collector.customer_reference_collector import CustomerReferenceCollector
 from app.collector.customer_reference_index import (
     DEFAULT_SEARCH_LIMIT,
@@ -20,6 +21,7 @@ from app.collector.customer_reference_index import (
 from app.config import Settings
 from app.schemas.customer import (
     CustomerCandidate,
+    CustomerCreditHint,
     CustomerRecord,
     CustomerReferenceCache,
     CustomerValidationOutcome,
@@ -41,6 +43,8 @@ class CustomerService:
         # 与港口主数据是同一个服务：未单独配置时回退用 port_api_base
         api_base = settings.customer_api_base or settings.port_api_base
         self.collector = CustomerReferenceCollector(api_base) if api_base else None
+        # 信控查询（api/PubCredit）与客户主数据是同一个服务，共用基址
+        self.credit_collector = CreditReferenceCollector(api_base) if api_base else None
         self._index: CustomerReferenceIndex | None = None
 
     @property
@@ -48,6 +52,37 @@ class CustomerService:
         """未配置主数据接口时整体停用。"""
 
         return self.collector is not None
+
+    async def credit_hint(self, fid: str, area: str = "") -> CustomerCreditHint:
+        """取某委托客户的信用等级与信控提示，供弹窗显示在客户输入框下方。
+
+        与 poOrder 的 `loadWtkdData` 同口径：等级取自客户主数据的 `creditlevel`，
+        提示取自 `api/PubCredit` 的 `resultmessage`（仅 `resultstatus != 0` 时有值），
+        两者用逗号拼成一行展示。查询失败时降级为「只显示等级」，不阻断填写。
+        """
+
+        customer_id = str(fid or "").strip()
+        if not customer_id:
+            return CustomerCreditHint()
+        level = ""
+        index = await self._get_index()
+        if index is not None:
+            level = index.creditlevel_of(customer_id)
+        level_text = f"{level}类" if level else ""
+        if self.credit_collector is None:
+            return CustomerCreditHint(enabled=False, level=level, hint=level_text)
+        try:
+            payload = await self.credit_collector.fetch_credit(customer_id, area)
+        except Exception:
+            logger.exception("信控查询失败：客户 %s", customer_id)
+            return CustomerCreditHint(enabled=True, level=level, hint=level_text)
+        message = ""
+        if str(payload.get("resultstatus")) != "0":
+            message = str(payload.get("resultmessage") or "").strip()
+        hint = ", ".join(part for part in (level_text, message) if part)
+        return CustomerCreditHint(
+            enabled=True, level=level, message=message, hint=hint
+        )
 
     async def validate(self, raw_value: str) -> CustomerValidationOutcome:
         """校验一个委托客户输入（ID / 编码 / 名称 / 英文名均可）。"""

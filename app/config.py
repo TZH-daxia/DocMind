@@ -83,6 +83,33 @@ class Settings(BaseSettings):
     customer_cache_ttl_hours: float = Field(
         default=24.0, validation_alias="DOCMIND_CUSTOMER_CACHE_TTL_HOURS"
     )
+    # 唯凯站点字典接口（poOrder PublicWebApi /api/PubTypeCode?groupid=101）根地址；
+    # 与港口/客户主数据是同一个服务，留空时回退 port_api_base，都为空则停用站点候选
+    site_api_base: str = Field(default="", validation_alias="DOCMIND_SITE_API_BASE")
+    # 站点字典本地缓存有效期（小时）：字典是人工维护的静态数据，更新频率低
+    site_cache_ttl_hours: float = Field(
+        default=168.0, validation_alias="DOCMIND_SITE_CACHE_TTL_HOURS"
+    )
+    # 提交订单接口（poOrder api/ExHpoAxpline）根地址。该接口挂在 BoManagementWebApi 下
+    # （不是公共主数据的 PublicWebApi，见 poOrder src/store/index.js:82），与它们同主机。
+    # 留空时按 port_api_base 的应用名自动换成 BoManagementWebApi，本机 .env 只配了
+    # PublicWebApi 也能开箱可用；配了则以本项为准
+    order_api_base: str = Field(default="", validation_alias="DOCMIND_ORDER_API_BASE")
+    # 是否允许真实下单。**默认关闭**：提交是写操作，一旦后端地址配到非开发环境就会
+    # 在真实系统里建单，所以需要哪个环境能下单，就在该环境的 .env 里显式打开
+    order_submit_enabled: bool = Field(
+        default=False, validation_alias="DOCMIND_ORDER_SUBMIT_ENABLED"
+    )
+    # 委托项目主数据接口（poOrder PublicWebApi /api/PubCustom）根地址；
+    # 与港口/客户主数据是同一个服务，留空时回退 port_api_base，都为空则停用项目候选
+    project_api_base: str = Field(
+        default="", validation_alias="DOCMIND_PROJECT_API_BASE"
+    )
+    # 项目主数据本地缓存有效期（小时）：比客户表短 —— poOrder 每次刷新页面都会重拉，
+    # 且项目主数据变更后会主动刷新，说明这份数据变更比客户表频繁
+    project_cache_ttl_hours: float = Field(
+        default=12.0, validation_alias="DOCMIND_PROJECT_CACHE_TTL_HOURS"
+    )
     # 单文件大小上限：托书均为单页文档，50MB 已足够宽松；注意校验发生在
     # 上传内容读入内存之后，调大会同时放大单次请求的内存占用
     max_file_size_bytes: int = Field(

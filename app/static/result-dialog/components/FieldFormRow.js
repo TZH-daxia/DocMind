@@ -1,5 +1,6 @@
-import { CUSTOMER_COMBOBOX, PORT_COMBOBOX } from "../comboboxAdapters.js";
+import { PORT_COMBOBOX } from "../comboboxAdapters.js";
 import { FIELD_STATUS_LABELS, REVIEW_STATUSES } from "../constants.js";
+import { CustomerProjectBar } from "./CustomerProjectBar.js";
 import { DatePicker } from "./DatePicker.js";
 import { SearchCombobox } from "./SearchCombobox.js";
 
@@ -8,7 +9,7 @@ const CANDIDATE_PREVIEW_LIMIT = 6;
 
 export const FieldFormRow = {
   name: "FieldFormRow",
-  components: { DatePicker, SearchCombobox },
+  components: { CustomerProjectBar, DatePicker, SearchCombobox },
   props: {
     row: { type: Object, required: true },
     form: { type: Object, required: true },
@@ -112,15 +113,10 @@ export const FieldFormRow = {
     },
   },
   computed: {
-    // 需要"输入即搜索"下拉的控件：委托客户与始发/目的港，差别只在适配器
+    // 需要"输入即搜索"下拉的控件：委托客户走 CustomerProjectBar（自带搜索下拉），
+    // 这里只剩始发/目的港
     comboboxAdapter() {
-      if (this.row.control === "customer") {
-        return CUSTOMER_COMBOBOX;
-      }
-      if (this.row.control === "port") {
-        return PORT_COMBOBOX;
-      }
-      return null;
+      return this.row.control === "port" ? PORT_COMBOBOX : null;
     },
     target: {
       get() {
@@ -319,6 +315,12 @@ export const FieldFormRow = {
           @input="onNumericInput"
           @focus="onFieldFocus"
         >
+        <CustomerProjectBar
+          v-else-if="row.control === 'customer'"
+          :form="form"
+          :locked="locked"
+          @focus="onFieldFocus"
+        />
         <SearchCombobox
           v-else-if="comboboxAdapter"
           :model-value="target"

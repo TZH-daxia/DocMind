@@ -36,13 +36,26 @@ export const ResultDialog = {
     onFieldFocus(payload) {
       resultDialog.focusField(payload);
     },
-    onSubmit() {
-      if (this.state.submitted) {
+    onSelectServices() {
+      // 服务项目面板（服务代码的增删改）尚未接入：先明确告知，
+      // 避免按下去没反应让人以为按钮坏了
+      notify("服务项目面板尚未接入", "error");
+    },
+    async onSubmit() {
+      if (this.state.submitted || this.state.submitting) {
         // 按钮已置灰，这里再兜一层：键盘/脚本触发也不允许重复提交
         return;
       }
-      const outcome = resultDialog.submit();
+      // 本地必填校验 + 真实提交（后端组装报文并调用 poOrder 的 api/ExHpoAxpline）
+      const outcome = await resultDialog.submit();
       if (!outcome.ok) {
+        if (outcome.message) {
+          // 接口给出的原因，或条件必填没满足（如「项目」）：都带定位信息，
+          // 把焦点带到出问题的那一行
+          notify(outcome.message, "error");
+          this.focusRow(outcome.firstError);
+          return;
+        }
         const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
         notify(
           missing.length > 3
@@ -53,14 +66,14 @@ export const ResultDialog = {
         this.focusRow(outcome.firstError);
         return;
       }
-      // 必填校验通过即视为提交成功（委托客户与港口已从主数据下拉选取，值本身有效）。
-      // 注意：真实提交接口尚未接入，这里先给出「提交成功」提示并走页签颜色逻辑，
-      // 目的是验证"提交成功→浅绿 / 选中→深绿 + 对号"的状态变化。
-      notify("提交成功", "success");
-      // 标记为已提交：页签条对该文件显示绿色 + 对号，弹窗按钮变「已提交」并置灰
-      // （真实提交接口接入后，把这一句挪到提交成功回调里即可）
-      resultDialog.markSubmitted(this.state.taskId);
-      // 提交后不自动收起弹窗：方便立刻看到页签变绿，也便于继续核对其他文件
+      // 提交成功：订舱编号已由 resultDialog.submit 写进 state.orderCode（头部叉号左侧），
+      // 这里只提示，不自动收起弹窗——方便立刻看到编号与页签变绿，也便于继续核对其他文件。
+      // 文案按需求文档的返回格式『新增成功，订舱编号BOAE…』：poOrder 原文里还夹着
+      // 信控提示，那段信息已经在「委托客户」下方单独展示，不重复塞进这条提示
+      notify(
+        outcome.orderCode ? `新增成功，订舱编号${outcome.orderCode}` : "新增成功",
+        "success",
+      );
     },
     focusRow(fieldKey) {
       if (!fieldKey) {
@@ -93,20 +106,27 @@ export const ResultDialog = {
             <!-- 列表拿不到时退回显示当前文件名，避免头部没有文件标识 -->
             <h1 v-if="!state.fileTabs.length">{{ state.fileName || "分析结果" }}</h1>
           </div>
-          <!-- 收起与提交是弹窗级操作：放在右侧，并在整块列头里上下居中 -->
+          <!-- 收起：设计稿改为右上角的圆形叉号，只负责关闭弹窗；提交已移到弹窗底部 -->
           <div class="doc-dialog-head-actions">
+            <!-- 订舱编号：提交成功后 poOrder 返回的编号，放在叉号左侧
+                 （原先放工具条的编号槽，17 位编号会把右侧四个胶囊挤出去造成遮挡） -->
+            <!-- 注意：本组件的 template 整体就是一层反引号字符串，这里**不能**再用
+                 模板字符串（内层反引号会把外层提前截断，整个模块直接加载失败） -->
+            <span
+              v-if="state.orderCode"
+              class="doc-dialog-order-code"
+              :title="'订舱编号 ' + state.orderCode"
+            >
+              <i class="doc-dialog-order-code-dot" aria-hidden="true"></i>
+              <span class="doc-dialog-order-code-text">订舱编号 {{ state.orderCode }}</span>
+            </span>
             <button
               class="doc-dialog-collapse"
               type="button"
+              aria-label="收起"
+              title="收起"
               @click="onCollapse"
-            >收起</button>
-            <!-- 已提交是终态：按钮沿用「提交」文案，仅置灰且不可再点 -->
-            <button
-              class="doc-dialog-submit"
-              type="button"
-              :disabled="state.submitted || state.submitting || formDisabled"
-              @click="onSubmit"
-            ><span v-if="state.submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交</button>
+            ><i class="doc-dialog-collapse-icon" aria-hidden="true"></i></button>
           </div>
         </header>
         <div class="doc-dialog-body">
@@ -121,6 +141,8 @@ export const ResultDialog = {
           <FieldFormPanel
             :rows="fields"
             :form="state.form"
+            :order="state.order"
+            :site-groups="state.siteGroups"
             :original="state.original"
             :raw-values="state.rawValues"
             :evidences="state.evidences"
@@ -131,8 +153,19 @@ export const ResultDialog = {
             :locked="state.submitted"
             :reset-key="state.taskId"
             @field-focus="onFieldFocus"
+            @select-services="onSelectServices"
           />
         </div>
+        <!-- 提交移到弹窗底部（具体位置待设计确认，先靠右） -->
+        <footer class="doc-dialog-foot">
+          <!-- 已提交是终态：按钮沿用「提交订单」文案，仅置灰且不可再点 -->
+          <button
+            class="doc-dialog-submit"
+            type="button"
+            :disabled="state.submitted || state.submitting || formDisabled"
+            @click="onSubmit"
+          ><span v-if="state.submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交订单</button>
+        </footer>
       </section>
     </div>
   `,
