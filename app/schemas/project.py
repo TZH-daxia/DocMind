@@ -57,6 +57,12 @@ class ProjectRecord(BaseModel):
     comxz: str = ""
     # 2 = 不参与新业务
     customxz: int = 0
+    # 该项目允许的站点，逗号分隔；"-1" 表示不限站点
+    #（口径见 poOrder newOrderAdd.vue 的「该项目没有X站点权限！」判定）
+    area: str = ""
+    # 该项目允许的业务系统 **字典 id**，逗号分隔；"-1" 表示不限
+    #（poOrder 用 groupid == 57 的字典把 id 翻成「空出/海进」这类名字）
+    system: str = ""
     # 增量拉取用的时间戳
     timestamp: int = 0
 
@@ -75,3 +81,11 @@ class ProjectCandidate(BaseModel):
     name: str = Field(default="", description="项目简称，下拉显示")
     code: str = Field(default="", description="项目编码，随行带出用于拼单号")
     full_name: str = Field(default="", description="字典原文，形如「简称-全称」")
+    area: str = Field(
+        default="",
+        description="该项目允许的站点，逗号分隔；'-1' 表示不限（站点权限判定用）",
+    )
+    systems: list[str] = Field(
+        default_factory=list,
+        description="该项目允许的业务系统名（如「空出」）；['-1'] 表示不限",
+    )

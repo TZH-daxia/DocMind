@@ -17,6 +17,15 @@ export const FIELD_ORDER = [
   "consignee",
 ];
 
+// 不在表单表格里、但由横栏上的选择器写进 form、同样属于「人工核对过的内容」的字段：
+// 项目（gid 进提交报文；wtxmname / wtxmcode 用于显示与拼单号）与本票客服联系人
+//（customerRelList）。它们必须跟草稿一起持久化 —— 否则切任务/刷新后，刚选好的项目
+// 就不显示了（草稿里其实存着，只是恢复时只认表格字段 FIELD_ORDER，把这些挡掉了）。
+export const CONTEXT_FIELDS = ["gid", "wtxmname", "wtxmcode", "customerRelList"];
+
+// 上述字段的初始值（未列出的按空串），让"没选过"与"选过又被清空"表现一致
+export const CONTEXT_FIELD_DEFAULTS = { customerRelList: [] };
+
 // 仅前端展示的派生字段：不进抽取结果，由重量 × 预计运费单价自动计算
 export const TOTAL_FIELD_KEY = "inwagealltotal";
 

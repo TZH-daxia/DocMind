@@ -143,15 +143,20 @@ async def credit_hint(
         str,
         Query(description="唯凯站点（站点中文名）；信控按站点分别校验"),
     ] = "",
+    system: Annotated[
+        str,
+        Query(description="业务系统（如空出/海进）；信控也按系统分别校验"),
+    ] = "",
 ) -> dict[str, Any]:
     """选完委托客户后取信用等级与信控提示，显示在客户输入框下方。
 
     口径与 poOrder 订单新增页一致（`newOrderAdd.vue` 的 `loadWtkdData`）：等级来自
-    客户主数据的 `creditlevel`，提示来自 `api/PubCredit` 的 `resultmessage`。
+    客户主数据的 `creditlevel`，提示来自 `api/PubCredit` 的 `resultmessage`，
+    查询参数是 `fid + area + system` 三个维度（漏了 system 会少掉系统专属的限制）。
     信控接口不可用或查询失败时降级为「只显示等级」，不阻断填写。
     """
 
-    return await service.credit_hint(fid, area)
+    return await service.credit_hint(fid, area, system)
 
 
 @router.post(
@@ -216,11 +221,36 @@ async def list_projects(
     """列出某委托客户下的项目候选，供订单工具条右侧「项目」下拉选择。
 
     口径与 poOrder 订单新增页一致：`usr_status == 1`、`comxz` 含 1、
-    `customxz != 2`，再按 `fid` 收敛；**不按站点过滤**（站点约束发生在选中之后
-    的校验）。未配置项目主数据接口时 `enabled` 为 false 且 `items` 为空。
+    `customxz != 2`，再按 `fid` 收敛；**不按站点过滤**——站点权限是选中项目
+    之后判定的（poOrder 的「该项目没有X站点权限！」），候选里带着每个项目
+    允许的站点（`area`）供前端判定。未配置项目主数据接口时 `enabled` 为 false
+    且 `items` 为空。
     """
 
     return await service.list_projects(fid, keyword)
+
+
+@router.get(
+    "/contacts",
+    summary="列出本票客户客服联系人",
+    response_description="联系人候选（items，含 is_default 标注）与接口是否可用（enabled）",
+)
+async def list_customer_contacts(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    fid: Annotated[str, Query(description="委托客户 ID")],
+    area: Annotated[str, Query(description="唯凯站点；用于判断本票默认联系人")] = "",
+    system: Annotated[
+        str, Query(description="业务系统（如空出）；用于判断本票默认联系人")
+    ] = "",
+) -> dict[str, Any]:
+    """列出某委托客户下的客服联系人，供弹窗「本票客户客服联系人」展示与挑选。
+
+    口径与 poOrder 一致：`GET api/CustomerRel/GetCustomerRel`（BoManagementWebApi），
+    只保留 `comxz == '1'` 的联系人；`defaultlxrjson` 里同时匹配当前站点与业务系统的
+    那条标为 `is_default`。接口不可用或查询失败时返回空列表，不阻断填写。
+    """
+
+    return await service.list_contacts(fid, area, system)
 
 
 @router.get(

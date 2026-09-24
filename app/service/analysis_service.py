@@ -50,6 +50,7 @@ from app.schemas.po_order import (
     PO_ORDER_KEYS,
     PORT_FIELD_KEYS,
 )
+from app.service.customer_contact_service import CustomerContactService
 from app.service.customer_service import CustomerService
 from app.service.port_normalization_service import PortNormalizationService
 from app.service.project_service import ProjectService
@@ -349,6 +350,7 @@ class AnalysisService(WorkflowEventPublisher):
         self.requirement_service = PoOrderRequirementService()
         self.port_service = PortNormalizationService(settings, self.file_store)
         self.customer_service = CustomerService(settings, self.file_store)
+        self.customer_contact_service = CustomerContactService(settings)
         self.site_service = SiteService(settings, self.file_store)
         self.order_submit_service = OrderSubmitService(settings)
         self.project_service = ProjectService(settings, self.file_store)
@@ -1375,15 +1377,29 @@ class AnalysisService(WorkflowEventPublisher):
             "items": [item.model_dump(mode="json") for item in candidates],
         }
 
-    async def credit_hint(self, fid: str, area: str = "") -> dict[str, Any]:
+    async def credit_hint(
+        self, fid: str, area: str = "", system: str = ""
+    ) -> dict[str, Any]:
         """取委托客户的信用等级与信控提示（显示在客户输入框下方）。
 
         口径与 poOrder 订单新增页一致：等级来自客户主数据 `creditlevel`，
-        提示来自 `api/PubCredit` 的 `resultmessage`；接口不可用时只回等级。
+        提示来自 `api/PubCredit` 的 `resultmessage`（查询按 fid + area + system）；
+        接口不可用时只回等级。
         """
 
-        outcome = await self.customer_service.credit_hint(fid, area)
+        outcome = await self.customer_service.credit_hint(fid, area, system)
         return outcome.model_dump(mode="json")
+
+    async def list_contacts(
+        self, fid: str, area: str = "", system: str = ""
+    ) -> dict[str, Any]:
+        """列出某委托客户的客服联系人候选（供弹窗展示与挑选）。
+
+        口径与 poOrder 一致：BoManagementWebApi 的 `api/CustomerRel/GetCustomerRel`，
+        只保留有效（`comxz == '1'`）的联系人，本票默认联系人用 `is_default` 标注。
+        """
+
+        return await self.customer_contact_service.list_contacts(fid, area, system)
 
     async def submit_order(
         self,
@@ -1419,8 +1435,9 @@ class AnalysisService(WorkflowEventPublisher):
         """列出某委托客户下的项目候选，供「项目」下拉选择。
 
         口径与 poOrder 订单新增页一致（`usr_status` / `comxz` / `customxz`
-        过滤后按 `fid` 收敛，不按站点过滤）；返回 items（候选项目）与
-        enabled（项目主数据是否可用）。
+        过滤后按 `fid` 收敛），**不按站点过滤**——站点权限由前端在选中项目之后
+        判定（「该项目没有X站点权限！」），先过滤会让该判定无从触发。
+        返回 items（候选项目，含各自允许的站点 `area`）与 enabled（是否可用）。
         """
 
         candidates = await self.project_service.list_by_customer(fid, keyword)

@@ -1,6 +1,8 @@
 import { fetchCredit } from "../api.js";
 import { CUSTOMER_COMBOBOX } from "../comboboxAdapters.js";
+import { derivedSystem } from "../orderSystem.js";
 import { dialogState } from "../state.js";
+import { ContactSelect } from "./ContactSelect.js";
 import { ProjectSelect } from "./ProjectSelect.js";
 import { SearchCombobox } from "./SearchCombobox.js";
 
@@ -8,7 +10,7 @@ import { SearchCombobox } from "./SearchCombobox.js";
  * 委托客户 · 项目 · 本票客户客服联系人。
  *
  * 版式对齐设计稿：三段合并成一条圆角描边横栏，段间用竖线分隔，客户名占满
- * 剩余宽度，右端是本票客户客服联系人按钮。三者是一条业务链——选委托客户决定
+ * 剩余宽度，右端是本票客户客服联系人。三者是一条业务链——选委托客户决定
  * 项目候选，项目和区域/系统又决定默认联系人，因此必须同栏展示，拆成三行会让人
  * 看不出从属关系。
  *
@@ -26,21 +28,18 @@ import { SearchCombobox } from "./SearchCombobox.js";
  * 项目段已接入（见 ProjectSelect）：候选按委托客户收敛，选中后回填
  * `gid`（提交值）与 `wtxmname` / `wtxmcode`（展示与拼单号）。
  *
- * 联系人主数据尚未接入（接口在 poOrder 的 BoManagementWebApi，需要鉴权）：
- * 按钮由 `relReady` 控制可用性。未就绪时**不改变外观**（设计稿里这段就是常态
- * 样式），只置为 disabled 并在 title 里写明缺哪个接口，避免用灰底伪装成
- * "已完成只读"。
+ * 本票客户客服联系人已接入（见 ContactSelect）：候选来自 poOrder 的
+ * `api/CustomerRel/GetCustomerRel`，默认联系人按站点 + 业务系统自动带出；
+ * 选中的那条写回 `form.customerRelList`，提交时取它填报文的 `name/mobile/phone`。
  */
 export const CustomerProjectBar = {
   name: "CustomerProjectBar",
-  components: { ProjectSelect, SearchCombobox },
+  components: { ContactSelect, ProjectSelect, SearchCombobox },
   props: {
     form: { type: Object, required: true },
     locked: { type: Boolean, default: false },
-    // 联系人主数据就绪前，联系人按钮只展示占位、不响应点击
-    relReady: { type: Boolean, default: false },
   },
-  emits: ["focus", "select-rel"],
+  emits: ["focus"],
   data() {
     return {
       // 信用等级 / 信控提示（合成文案），无客户或查不到时为空
@@ -66,25 +65,14 @@ export const CustomerProjectBar = {
       }
       return String(this.form.wtxmname || this.projectValue);
     },
+    // 提交报文的 customerRelList 只取一条；这里就是那一条（供选择器显示当前项）
+    selectedContact() {
+      const list = this.form.customerRelList;
+      return Array.isArray(list) && list.length ? list[0] : null;
+    },
     // 信控按站点分别校验，取工具条当前选中的唯凯站点
     currentArea() {
       return String(dialogState.order.area || "");
-    },
-    relCount() {
-      return Array.isArray(this.form.customerRelList)
-        ? this.form.customerRelList.length
-        : 0;
-    },
-    relText() {
-      return this.relCount
-        ? `本票客户客服联系人（${this.relCount}）`
-        : "本票客户客服联系人";
-    },
-    relTitle() {
-      if (!this.relReady) {
-        return "联系人主数据尚未接入：需按 fid 查 api/CustomerRel/GetCustomerRel";
-      }
-      return this.relCount ? "修改本票客户客服联系人" : "选择本票客户客服联系人";
     },
   },
   watch: {
@@ -111,12 +99,19 @@ export const CustomerProjectBar = {
       // 手输未选时字段里是名称，查不到任何东西）——此时必须清空，
       // 否则会留下上一个客户的文案
       const fid = String(this.form.fid || "").trim();
-      if (!/^\d+$/.test(fid)) {
+      if (!/^\d+$/.test(fid) || !this.currentArea) {
+        // 客户没选（手输未选），或站点被清空（项目站点权限不通过时会清空站点）：
+        // 信控是「客户 + 站点」两个维度的，缺一个就没有结论，直接收起这一行
         this.creditHint = "";
         return;
       }
       try {
-        const payload = await fetchCredit(fid, this.currentArea);
+        // 信控按 fid + 站点 + 业务系统 三个维度查（漏了 system 会少掉系统专属的限制）
+        const payload = await fetchCredit(
+          fid,
+          this.currentArea,
+          derivedSystem(dialogState.order),
+        );
         if (seq !== this.creditSeq) {
           return;
         }
@@ -149,11 +144,10 @@ export const CustomerProjectBar = {
       this.form.wtxmname = item.name || "";
       this.form.wtxmcode = item.code || "";
     },
-    onRelClick() {
-      if (this.locked || !this.relReady) {
-        return;
-      }
-      this.$emit("select-rel");
+    onContactChange(item) {
+      // 提交报文的 customerRelList 只要一条（需求报文的样例就是一项）：
+      // 选中的这条进报文，其余固定项由后端补齐
+      this.form.customerRelList = item ? [item] : [];
     },
   },
   template: `
@@ -176,13 +170,12 @@ export const CustomerProjectBar = {
           :locked="locked"
           @change="onProjectChange"
         />
-        <button
-          class="doc-dialog-customer-bar-rel"
-          type="button"
-          :disabled="locked || !relReady"
-          :title="relTitle"
-          @click="onRelClick"
-        >{{ relText }}</button>
+        <ContactSelect
+          :customer-id="customerValue"
+          :selected="selectedContact"
+          :locked="locked"
+          @change="onContactChange"
+        />
       </div>
       <small v-if="creditHint" class="doc-dialog-hint">{{ creditHint }}</small>
     </div>

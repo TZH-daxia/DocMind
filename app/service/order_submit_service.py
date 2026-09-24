@@ -207,8 +207,12 @@ def parse_submit_result(payload: Any) -> tuple[bool, str, str]:
     return ok, order_code, message
 
 
-def _management_api_base(settings: Settings) -> str:
-    """提交接口根地址：优先专用配置，否则把公共主数据的应用名换成 BoManagementWebApi。"""
+def management_api_base(settings: Settings) -> str:
+    """BoManagementWebApi 根地址：提交订单、客服联系人等接口都挂在这个应用下。
+
+    优先用专用配置 `DOCMIND_ORDER_API_BASE`；否则把公共主数据的应用名换成
+    BoManagementWebApi（同主机、不同应用名，见 poOrder src/store/index.js:82）。
+    """
 
     if settings.order_api_base:
         return settings.order_api_base
@@ -222,7 +226,7 @@ class OrderSubmitService:
     """提交订单：组装报文 → 调用 poOrder → 解析订舱编号。"""
 
     def __init__(self, settings: Settings) -> None:
-        api_base = _management_api_base(settings)
+        api_base = management_api_base(settings)
         self.collector = OrderSubmitCollector(api_base) if api_base else None
         # 真实下单开关：默认关闭，哪个环境要下单就在该环境的 .env 里显式打开
         self.submit_enabled = settings.order_submit_enabled

@@ -9,6 +9,7 @@
  * 等提交接口落地后，这里应改为从后端读草稿/已提交内容，前端只做短时缓存。
  */
 
+import { CONTEXT_FIELDS, FIELD_ORDER } from "./constants.js";
 import { loadSubmittedTaskIds } from "./submittedTasks.js";
 
 const STORAGE_KEY = "docmind.draftForms";
@@ -27,6 +28,42 @@ export function loadDraftForm(taskId) {
   return entry && entry.form && typeof entry.form === "object" ? entry.form : null;
 }
 
+/**
+ * 读取某任务保存过的订单上下文（工具条上的站点 / 服务方式 / 运输种类 / 订舱操作）。
+ *
+ * 它跟表单不是一回事，但同样属于「人工核对过的内容」：值按上传来源来（不同文件可能
+ * 来自不同站点、不同业务），在弹窗里也能被人工改。它只存在全局的 `dialogState.order`
+ * 上 —— 不按任务存的话，切任务时会被上一个任务的值顶掉、刷新后又会退回硬编码默认值
+ *（上海 / 空运 / 出口），于是「之前填的和现在显示的不一样」。
+ */
+export function loadDraftOrder(taskId) {
+  if (!taskId) {
+    return null;
+  }
+  const entry = readItems()[String(taskId)];
+  return entry && entry.order && typeof entry.order === "object" ? entry.order : null;
+}
+
+/**
+ * 把草稿里的值合并回表单。
+ *
+ * 恢复范围是「表格字段（FIELD_ORDER）+ 横栏字段（CONTEXT_FIELDS）」：前者是表单行，
+ * 后者是 ProjectSelect / ContactSelect 写进 form 的项目（gid / wtxmname / wtxmcode）
+ * 与本票客服联系人（customerRelList）。两边都必须恢复 —— 只恢复表格字段的话，
+ * 切任务/刷新后人工选好的项目会显示不出来（草稿里其实存着）。
+ */
+export function mergeDraftForm(form, cachedForm) {
+  if (!form || !cachedForm) {
+    return form;
+  }
+  for (const key of [...FIELD_ORDER, ...CONTEXT_FIELDS]) {
+    if (key in cachedForm) {
+      form[key] = JSON.parse(JSON.stringify(cachedForm[key]));
+    }
+  }
+  return form;
+}
+
 /** 记下某任务的表单值（写入前做深拷贝，避免后续编辑改到存档）。 */
 export function rememberDraftForm(taskId, form) {
   if (!taskId || !form) {
@@ -37,7 +74,26 @@ export function rememberDraftForm(taskId, form) {
     return;
   }
   const items = readItems();
-  items[String(taskId)] = { savedAt: Date.now(), form: JSON.parse(payload) };
+  // 同一条记录里还存着订单上下文（order），这里不能整条覆盖掉
+  items[String(taskId)] = {
+    savedAt: Date.now(),
+    form: JSON.parse(payload),
+    order: items[String(taskId)]?.order,
+  };
+  writeItems(trim(items));
+}
+
+/** 记下某任务的订单上下文（工具条四项；与表单共用同一条记录）。 */
+export function rememberDraftOrder(taskId, order) {
+  if (!taskId || !order) {
+    return;
+  }
+  const items = readItems();
+  items[String(taskId)] = {
+    savedAt: Date.now(),
+    form: items[String(taskId)]?.form,
+    order: JSON.parse(JSON.stringify(order)),
+  };
   writeItems(trim(items));
 }
 

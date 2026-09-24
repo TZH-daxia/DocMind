@@ -53,7 +53,9 @@ class CustomerService:
 
         return self.collector is not None
 
-    async def credit_hint(self, fid: str, area: str = "") -> CustomerCreditHint:
+    async def credit_hint(
+        self, fid: str, area: str = "", system: str = ""
+    ) -> CustomerCreditHint:
         """取某委托客户的信用等级与信控提示，供弹窗显示在客户输入框下方。
 
         与 poOrder 的 `loadWtkdData` 同口径：等级取自客户主数据的 `creditlevel`，
@@ -72,7 +74,7 @@ class CustomerService:
         if self.credit_collector is None:
             return CustomerCreditHint(enabled=False, level=level, hint=level_text)
         try:
-            payload = await self.credit_collector.fetch_credit(customer_id, area)
+            payload = await self.credit_collector.fetch_credit(customer_id, area, system)
         except Exception:
             logger.exception("信控查询失败：客户 %s", customer_id)
             return CustomerCreditHint(enabled=True, level=level, hint=level_text)

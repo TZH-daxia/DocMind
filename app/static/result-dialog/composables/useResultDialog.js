@@ -8,7 +8,13 @@ import {
   submitOrder,
 } from "../api.js";
 import { currentTicket, currentUserDom, currentUserName } from "../currentUser.js";
-import { loadDraftForm, rememberDraftForm } from "../draftForms.js";
+import {
+  loadDraftForm,
+  loadDraftOrder,
+  mergeDraftForm,
+  rememberDraftForm,
+  rememberDraftOrder,
+} from "../draftForms.js";
 import {
   loadOrderCode,
   loadSubmittedTaskIds,
@@ -16,6 +22,8 @@ import {
   rememberSubmittedTask,
 } from "../submittedTasks.js";
 import {
+  CONTEXT_FIELD_DEFAULTS,
+  CONTEXT_FIELDS,
   DATE_VALUE_PATTERN,
   FIELD_CONTROLS,
   FIELD_ORDER,
@@ -33,12 +41,15 @@ const MAX_FILE_TABS = 5;
 let submittedTaskIds = loadSubmittedTaskIds();
 
 // 记住某任务填过的内容：草稿落在 localStorage（见 draftForms.js），
-// 因此切走再切回、甚至刷新页面后都能恢复，人工核对成果不会丢
+// 因此切走再切回、甚至刷新页面后都能恢复，人工核对成果不会丢。
+// 表单与订单上下文（工具条四项）都要存：后者全局只有一份，漏存就会出现
+//「切任务 / 刷新后，工具条显示的不是这个任务填过的值」
 function rememberForm(taskId) {
   if (!taskId) {
     return;
   }
   rememberDraftForm(taskId, dialogState.form);
+  rememberDraftOrder(taskId, dialogState.order);
 }
 
 // 输入即存（防抖 400ms）：填到一半就刷新/关标签页也不会丢。
@@ -63,6 +74,26 @@ watch(
   { deep: true },
 );
 
+// 工具条上的订单上下文（站点 / 服务方式 / 运输种类 / 订舱操作）同样按任务存：
+// 它全局只有一份，改一次就得落一次，否则切任务 / 刷新后会退回硬编码默认值
+let orderDraftTimer = null;
+watch(
+  () => dialogState.order,
+  () => {
+    const taskId = dialogState.taskId;
+    if (!taskId) {
+      return;
+    }
+    clearTimeout(orderDraftTimer);
+    orderDraftTimer = setTimeout(() => {
+      if (dialogState.taskId === taskId) {
+        rememberDraftOrder(taskId, dialogState.order);
+      }
+    }, DRAFT_DEBOUNCE_MS);
+  },
+  { deep: true },
+);
+
 async function loadTask(taskId) {
   if (loadedTaskIds.has(taskId) && dialogState.taskId === taskId) {
     return;
@@ -73,6 +104,17 @@ async function loadTask(taskId) {
   // 订舱编号同样跟着任务走：切任务、刷新页面后仍显示（在弹窗头部的编号位上）；
   // 该任务没提交过就置空，避免把上一个任务的编号带过来
   dialogState.orderCode = loadOrderCode(taskId);
+  // 工具条四项（站点 / 服务方式 / 运输种类 / 订舱操作）也按任务恢复：它们全局只有一份，
+  // 不恢复就会出现「切到别的任务、或刷新页面后，工具条显示的不是这个任务填过的值」。
+  // 该任务从没改过这几项时保持当前值（相当于工作台级的默认），不清成空占位
+  const savedOrder = loadDraftOrder(taskId);
+  if (savedOrder) {
+    Object.assign(dialogState.order, savedOrder);
+  } else {
+    // 该任务还没存过：把当前这份固化给它。否则它每次都跟着"最后打开过的任务"走，
+    // 看起来仍像是自己变了；固化之后每个任务都有自己那一份，改哪份都不影响别人
+    rememberDraftOrder(taskId, dialogState.order);
+  }
   dialogState.loading = true;
   dialogState.error = "";
   try {
@@ -235,16 +277,16 @@ function applyResult(result, taskId) {
     }
     original[key] = JSON.parse(JSON.stringify(form[key]));
   }
-  // 该任务之前填过（含刷新后的本地草稿）：用它覆盖表单值。original 仍是 AI 抽取结果，
-  // 所以"已修改"标记依然能正确指出哪些字段被人改过
-  const cachedForm = loadDraftForm(taskId);
-  if (cachedForm) {
-    for (const key of FIELD_ORDER) {
-      if (key in cachedForm) {
-        form[key] = JSON.parse(JSON.stringify(cachedForm[key]));
-      }
-    }
+  // 横栏字段（项目 gid/wtxmname/wtxmcode、本票客服联系人 customerRelList）：它们不在
+  // 表格里，不参与行渲染与"已修改"标记，但必须给一个确定的初值 —— 否则表单重建后
+  // 这些键直接不存在（手输/清空会表现为 undefined），下面 restore 也才有落脚点
+  for (const key of CONTEXT_FIELDS) {
+    form[key] = JSON.parse(JSON.stringify(CONTEXT_FIELD_DEFAULTS[key] ?? ""));
   }
+  // 该任务之前填过（含刷新后的本地草稿）：用它覆盖表单值。original 仍是 AI 抽取结果，
+  // 所以"已修改"标记依然能正确指出哪些字段被人改过。
+  // 恢复范围含横栏字段 —— 只恢复表格字段会让"人工选好的项目"在切任务/刷新后消失
+  mergeDraftForm(form, loadDraftForm(taskId));
   dialogState.form = form;
   dialogState.original = original;
   dialogState.fieldStatus = fieldStatus;
@@ -379,6 +421,16 @@ export const resultDialog = {
           // 项目主数据拿不到：不在这里拦，留给后端与人工核对
         }
       }
+    }
+    // 站点（area）是报文必填项，信控、项目站点权限也都按它判定；为空时不要发出去
+    //（poOrder 前端拦截器对这种情况的提示就是「请选择区域」）
+    if (!String(dialogState.order.area || "").trim()) {
+      return {
+        ok: false,
+        errors: {},
+        firstError: null,
+        message: "请选择区域",
+      };
     }
     if (dialogState.submitting) {
       // 上一次还没回来：避免连点造成重复下单

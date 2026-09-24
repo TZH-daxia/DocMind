@@ -15,13 +15,26 @@ class FakeCreditCollector:
     def __init__(self, payload: dict | None = None, error: Exception | None = None):
         self.payload = payload or {}
         self.error = error
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str]] = []
 
     async def fetch_credit(self, fid: str, area: str = "", system: str = "") -> dict:
-        self.calls.append((fid, area))
+        self.calls.append((fid, area, system))
         if self.error is not None:
             raise self.error
         return self.payload
+
+
+async def test_credit_query_passes_system(tmp_path: Path) -> None:
+    """信控按 fid + 站点 + 业务系统 三个维度查（与 poOrder 的 PubCredit 调用一致）。"""
+
+    service = build_service(tmp_path)
+    service._index = make_index()  # type: ignore[assignment]
+    collector = FakeCreditCollector({"resultstatus": 0})
+    service.credit_collector = collector
+
+    await service.credit_hint("12794", "上海", "空出")
+
+    assert collector.calls == [("12794", "上海", "空出")]
 
 
 def build_service(tmp_path: Path) -> CustomerService:

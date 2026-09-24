@@ -2005,6 +2005,38 @@ select:focus {
   text-align: center;
 }
 
+/* 本票客户客服联系人选择器：与「项目」下拉同构（容器内联、面板向左展开）。
+   面板向左不会顶到弹窗右边界，也不会给表格区带出横向滚动条 */
+.doc-contact-select {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.doc-contact-trigger {
+  /* 按钮里是「文案 + 箭头」，横排并留 2px 间距 */
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.doc-contact-menu {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+  max-width: min(320px, calc(47vw - 200px));
+  z-index: 40;
+}
+
+/* 空候选取一行「无数据」：与项目下拉的空态一致 */
+.doc-contact-empty {
+  margin: 0;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .doc-dialog-customer-bar-rel:hover:not(:disabled) {
   background: #d6e7ff;
 }

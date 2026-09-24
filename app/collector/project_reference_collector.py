@@ -57,6 +57,32 @@ class ProjectReferenceCollector:
         logger.info("项目主数据拉取完成：原始 %s 条，财务有效 %s 条", len(records), len(valid))
         return valid
 
+    async def fetch_system_names(self) -> dict[str, str]:
+        """取业务系统字典（`groupid == 57`）的 id → 名称映射。
+
+        poOrder 用同一份字典把项目记录里的 `system`（存的是字典 id）翻成
+        「空出 / 海进」这类名字（见 `newOrderAdd.vue` 计算 `disabledSystemOption`），
+        所以这里跟着取一份，交给项目服务在生成候选时解析成人类可读的系统名。
+        """
+
+        url = f"{self.api_base}api/PubTypeCode"
+        params: dict[str, str] = {"groupid": "57"}
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            payload = response.json()
+        if not isinstance(payload, list):
+            raise TypeError("PubTypeCode 返回结构不是数组")
+        names: dict[str, str] = {}
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("id") or "").strip()
+            name = str(item.get("typename") or "").strip()
+            if key and name:
+                names[key] = name
+        return names
+
     @staticmethod
     def _parse_record(item: dict[str, Any]) -> ProjectRecord:
         def text(key: str) -> str:
@@ -73,5 +99,7 @@ class ProjectReferenceCollector:
             usr_status_cw=_to_int(item.get("usr_status_cw")),
             comxz=text("comxz"),
             customxz=_to_int(item.get("customxz")),
+            area=text("area"),
+            system=text("system"),
             timestamp=_to_int(item.get("timestamp")),
         )

@@ -38,6 +38,8 @@ class ProjectService:
         api_base = settings.project_api_base or settings.port_api_base
         self.collector = ProjectReferenceCollector(api_base) if api_base else None
         self._by_customer: dict[str, list[ProjectCandidate]] | None = None
+        # 业务系统字典（groupid == 57）的 id → 名称；None 表示还没取过
+        self._system_names: dict[str, str] | None = None
 
     @property
     def enabled(self) -> bool:
@@ -54,6 +56,10 @@ class ProjectService:
         """返回某委托客户下的项目候选；可按关键字过滤名称/编码。
 
         未启用、主数据不可用、或 `fid` 为空时返回空列表。
+        **刻意不按站点过滤**（与 poOrder 一致，见模块说明）：站点约束是选中项目
+        之后才校验的，候选先按站点过滤会把「没有权限」这个证据本身滤掉，
+        前端那句「该项目没有X站点权限！」就永远触发不了（站点也就不会被清空）。
+        候选里的 `area` 带着每个项目允许的站点，交给前端判定。
         """
 
         customer_id = str(fid or "").strip()
@@ -75,7 +81,9 @@ class ProjectService:
         return candidates[: max(1, limit)]
 
     @staticmethod
-    def _build_index(records: list[ProjectRecord]) -> dict[str, list[ProjectCandidate]]:
+    def _build_index(
+        records: list[ProjectRecord], system_names: dict[str, str]
+    ) -> dict[str, list[ProjectCandidate]]:
         """筛出可用项目并按委托客户分组（口径见模块说明）。"""
 
         index: dict[str, list[ProjectCandidate]] = {}
@@ -93,9 +101,45 @@ class ProjectService:
                     name=record.usr_name,
                     code=record.usr_code,
                     full_name=record.full_name,
+                    area=record.area,
+                    systems=ProjectService._resolve_systems(
+                        record.system, system_names
+                    ),
                 )
             )
         return index
+
+    @staticmethod
+    def _resolve_systems(raw: str, system_names: dict[str, str]) -> list[str]:
+        """项目记录里的系统 id 串 → 系统名列表（如 `空出`）。
+
+        `-1` 或字典拿不到时按「不限」返回 `['-1']`。
+        poOrder 在项目没有 `system` 字段时会禁用全部系统（`codes != "-1"`），
+        这里选择放宽：主数据缺字段不至于把操作员全拦死，宁可放行后由 poOrder 兜底。
+        """
+
+        text = str(raw or "").strip()
+        if not text or text == "-1" or not system_names:
+            return ["-1"]
+        names = [
+            system_names.get(part.strip(), part.strip())
+            for part in text.split(",")
+            if part.strip()
+        ]
+        return names or ["-1"]
+
+    async def _get_system_names(self) -> dict[str, str]:
+        """业务系统字典（groupid == 57）的 id → 名称；取不到时返回空（按不限处理）。"""
+
+        if self._system_names is None:
+            names: dict[str, str] = {}
+            if self.collector is not None:
+                try:
+                    names = await self.collector.fetch_system_names()
+                except Exception:
+                    logger.exception("业务系统字典获取失败，项目系统权限按不限处理")
+            self._system_names = names
+        return self._system_names
 
     async def _get_index(self) -> dict[str, list[ProjectCandidate]] | None:
         """返回 fid → 项目候选的索引；必要时拉取（首次全量，之后按水位增量）。"""
@@ -117,7 +161,9 @@ class ProjectService:
                 logger.warning("项目主数据拉取失败且无本地缓存，项目候选不可用")
                 return None
             # 拉取失败但有过期缓存：沿用旧数据，避免主数据抖动影响下拉
-        self._by_customer = self._build_index(cache.records)
+        self._by_customer = self._build_index(
+            cache.records, await self._get_system_names()
+        )
         logger.info(
             "项目主数据索引就绪：%s 条记录，覆盖 %s 个委托客户",
             len(cache.records),
