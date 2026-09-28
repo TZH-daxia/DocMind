@@ -13,7 +13,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, StreamingResponse
 
-from app.api.dependencies import get_analysis_service
+from app.api.dependencies import current_ticket, get_analysis_service
 from app.schemas.analysis import AnalysisContext
 from app.schemas.file import UploadedDocument
 from app.schemas.submit import OrderSubmitRequest
@@ -167,6 +167,7 @@ async def credit_hint(
 async def submit_order(
     service: Annotated[AnalysisService, Depends(get_analysis_service)],
     payload: OrderSubmitRequest,
+    ticket: Annotated[str, Depends(current_ticket)],
 ) -> dict[str, Any]:
     """把弹窗里核对过的表单提交为 poOrder 订单（`api/ExHpoAxpline`）。
 
@@ -174,13 +175,19 @@ async def submit_order(
     `app/service/order_submit_service.py` 的 `build_submit_payload`）。
     缺少操作人时按 poOrder 口径回「无操作人数据，请重新登录」；接口调用失败或
     业务校验不通过时 `ok` 为 false，`message` 是给操作员看的原因。
+
+    poOrder 票据按 `current_ticket` 的口径取：**请求头优先**
+    （`Authorization` / `X-PoOrder-Ticket`），`?ticket=` 只在
+    `DOCMIND_ALLOW_URL_TICKET` 打开时作为开发期兜底；请求体里的 `ticket` 为兼容
+    旧调用方保留，优先级最低。
     """
 
     return await service.submit_order(
         form=payload.form,
         order=payload.order,
+        service_codes=payload.service_codes,
         czman=payload.czman,
-        ticket=payload.ticket,
+        ticket=ticket or payload.ticket,
     )
 
 
@@ -269,6 +276,30 @@ async def list_sites(
     """
 
     return await service.list_sites()
+
+
+@router.get(
+    "/user-defaults",
+    summary="用户默认设置（站点 / 服务方式 / 运输种类）",
+    response_description="该登录名在 poOrder 里保存的默认站点、运输种类、服务方式与默认服务",
+)
+async def get_user_defaults(
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+    ticket: Annotated[str, Depends(current_ticket)],
+    logname: Annotated[
+        str,
+        Query(description="登录名（poOrder 的 usrname / 报文里的 czman）"),
+    ] = "",
+) -> dict[str, Any]:
+    """取该操作员在 poOrder 里保存的「订单新增」默认设置，供工具条预填。
+
+    数据源是 `api/UserTemplet` 的 `type=110` 记录（`jsondata` 的 `mawbAddArea` /
+    `mawbAddSystem`），口径与 poOrder `newOrderAdd.vue` 的 `otherInitData()` 一致；
+    多条 110 记录时**优先启用项**（`isactivate == 1`）。票据按 `current_ticket`
+    的口径取（请求头优先），透传给 poOrder。取不到时各项为空串，前端用内置默认值兜底。
+    """
+
+    return await service.get_user_defaults(logname, ticket)
 
 
 @router.get(

@@ -41,7 +41,30 @@ export function loadDraftOrder(taskId) {
     return null;
   }
   const entry = readItems()[String(taskId)];
-  return entry && entry.order && typeof entry.order === "object" ? entry.order : null;
+  if (!entry || !entry.order || typeof entry.order !== "object") {
+    return null;
+  }
+  // base = 保存这份快照时算出的"默认值基线"：调用方据此判断哪些字段是人工改过的
+  //（与基线相同即没人动过，重开时应跟随最新的默认设置而不是钉在旧值上）。
+  // 早期版本的记录没有 base，读出来是 null，调用方按"整体沿用"处理
+  return {
+    order: entry.order,
+    base: entry.orderBase && typeof entry.orderBase === "object" ? entry.orderBase : null,
+  };
+}
+
+/**
+ * 读取某任务勾选过的服务项目（服务代码数组）；没有则返回 null。
+ *
+ * 与表单 / 订单上下文同样是「人工核对过的内容」：勾选状态进提交报文的 serviceList，
+ * 切任务或刷新后必须还原，否则操作员会以为没勾过、或重复勾选。
+ */
+export function loadDraftServices(taskId) {
+  if (!taskId) {
+    return null;
+  }
+  const entry = readItems()[String(taskId)];
+  return Array.isArray(entry?.services) ? entry.services : null;
 }
 
 /**
@@ -74,17 +97,24 @@ export function rememberDraftForm(taskId, form) {
     return;
   }
   const items = readItems();
-  // 同一条记录里还存着订单上下文（order），这里不能整条覆盖掉
+  // 同一条记录里还存着订单上下文（order）与服务项目（services），不能整条覆盖掉
   items[String(taskId)] = {
     savedAt: Date.now(),
     form: JSON.parse(payload),
     order: items[String(taskId)]?.order,
+    services: items[String(taskId)]?.services,
   };
   writeItems(trim(items));
 }
 
-/** 记下某任务的订单上下文（工具条四项；与表单共用同一条记录）。 */
-export function rememberDraftOrder(taskId, order) {
+/**
+ * 记下某任务的订单上下文（工具条四项；与表单共用同一条记录）。
+ *
+ * `base` 是这次保存时算出的**默认值基线**（`orderDefaults.js` 的 resolveOrderDefaults）。
+ * 存它的意义：重开任务时只沿用"与基线不同"的字段（= 人工改过的），其余跟随最新默认值，
+ * 这样改了 poOrder 的默认站点后，没被人动过的任务能立刻跟上。
+ */
+export function rememberDraftOrder(taskId, order, base) {
   if (!taskId || !order) {
     return;
   }
@@ -93,6 +123,23 @@ export function rememberDraftOrder(taskId, order) {
     savedAt: Date.now(),
     form: items[String(taskId)]?.form,
     order: JSON.parse(JSON.stringify(order)),
+    orderBase: base ? JSON.parse(JSON.stringify(base)) : null,
+    services: items[String(taskId)]?.services,
+  };
+  writeItems(trim(items));
+}
+
+/** 记下某任务勾选的服务项目（服务代码数组；与表单共用同一条记录）。 */
+export function rememberDraftServices(taskId, codes) {
+  if (!taskId || !Array.isArray(codes)) {
+    return;
+  }
+  const items = readItems();
+  items[String(taskId)] = {
+    savedAt: Date.now(),
+    form: items[String(taskId)]?.form,
+    order: items[String(taskId)]?.order,
+    services: JSON.parse(JSON.stringify(codes)),
   };
   writeItems(trim(items));
 }

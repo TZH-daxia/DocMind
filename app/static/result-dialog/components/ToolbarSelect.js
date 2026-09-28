@@ -11,10 +11,13 @@
  * options 是 [{ value, label }]：label 给人看，value 进提交报文，两者可能不同
  * （订舱操作的 label 是「唯凯配舱」，value 是「自货」）。
  *
- * 宽度稳定性：触发按钮里放了一份**隐身的最宽文案**（占位 + 所有选项文案，
- * 用 grid 叠在同一格，容器宽度即最宽者），当前值绝对定位叠在上面。
- * 于是胶囊宽度由"可能出现的所有文案"决定，从占位切到取值、
- * 或在不同长度的值之间切换，宽度都不变，右边的胶囊也不会被推来推去。
+ * 宽度稳定性：触发按钮里放了一份**隐身的最宽文案**（各选项文案，用 grid 叠在同一格，
+ * 容器宽度即最宽者），当前值绝对定位叠在上面。于是胶囊宽度固定，在长度不同的取值之间
+ * 切换时不会把右边的胶囊推来推去。
+ *
+ * 有值时**不再把占位（字段名，4 个字）算进宽度**：服务方式 / 运输种类 / 订舱操作都有
+ * 默认值、取值只有两个字，算上字段名会把胶囊白撑宽一圈；只有值为空（理论上不该出现）
+ * 时才靠它兜底。站点不走这套 —— 见 AreaSelect，它宽度自适应。
  */
 export const ToolbarSelect = {
   name: "ToolbarSelect",
@@ -42,11 +45,11 @@ export const ToolbarSelect = {
       // 直接显示原值而不是退回占位 —— 否则操作员会以为这一项没值
       return this.selected ? this.selected.label : this.modelValue;
     },
-    // 参与撑宽度的文案：占位 + 全部选项 + 当前取值。去重是为了 v-for 的 key 唯一
-    // （服务方式这类字段的取值本身就是选项文案，不去重会有重复 key）
+    // 参与撑宽度的文案：全部选项 + 当前取值；**有值时不算占位**（见文件头说明）。
+    // 去重是为了 v-for 的 key 唯一（取值本身就是选项文案时会有重复）
     sizerTexts() {
       const texts = [
-        this.placeholder,
+        ...(this.modelValue ? [] : [this.placeholder]),
         ...this.options.map((item) => item.label),
         this.modelValue,
       ];

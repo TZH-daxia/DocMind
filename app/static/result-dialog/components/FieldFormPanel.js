@@ -11,6 +11,10 @@ export const FieldFormPanel = {
     order: { type: Object, required: true },
     // 唯凯站点候选（按分组），供工具条「委托唯凯站点」下拉
     siteGroups: { type: Array, default: () => [] },
+    // 已勾选的服务项目数，透传给工具条的「服务项目」按钮
+    serviceCount: { type: Number, default: 0 },
+    // 订舱编号（提交成功后 poOrder 返回），透传给工具条最左边
+    orderCode: { type: String, default: "" },
     original: { type: Object, default: () => ({}) },
     rawValues: { type: Object, default: () => ({}) },
     evidences: { type: Object, default: () => ({}) },
@@ -33,6 +37,8 @@ export const FieldFormPanel = {
         <OrderToolbar
           :order="order"
           :site-groups="siteGroups"
+          :service-count="serviceCount"
+          :order-code="orderCode"
           :locked="locked"
           @select-services="$emit('select-services')"
         />

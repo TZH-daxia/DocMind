@@ -23,8 +23,21 @@ class OrderSubmitRequest(BaseModel):
     czman: str = Field(
         default="", description="当前用户（登录名）：同时进报文的 czman 与 customerRelList[].addman"
     )
+    service_codes: list[str] | None = Field(
+        default=None,
+        description=(
+            "服务项目面板勾选的服务代码（按面板顺序）；"
+            "不传 = 按默认的唯凯配舱（OA0010），传空数组 = 一项服务都不做"
+        ),
+    )
     ticket: str = Field(
-        default="", description="poOrder 票据；提交接口需要鉴权时透传，DocMind 不保存"
+        default="",
+        description=(
+            "poOrder 票据（**兼容旧调用方保留，优先级最低**）。"
+            "正常通道是请求头 `Authorization`（备用 `X-PoOrder-Ticket`）；"
+            "`?ticket=` 仅在 DOCMIND_ALLOW_URL_TICKET 打开时作为开发期兜底。"
+            "DocMind 不签发、不校验、不落盘，只在本次请求内透传给 poOrder"
+        ),
     )
 
 

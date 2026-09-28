@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 # 报文固定值：需求文档给定，不随表单变化
 FIXED_ORDERDOM = "总单"
 FIXED_LOG_EXTRA_DATA = "小凯,上海"
-# serviceList 首个服务项固定为唯凯配舱（OA0010）
+# 配舱服务的服务代码（唯凯配舱 / 唯凯代操作共用它，两者靠 czlx 区分）
 FIXED_SERVICE_CODE = "OA0010"
+# compute_system 的「国内服务」退化值：该业务不带 OA0010（见 build_submit_payload）
+HOME_SYSTEM = "国内服务"
 
 
 def text_of(value: Any) -> str:
@@ -82,6 +84,8 @@ def build_contact(
         "adddate": submit_date,
         "addman": czman,
         "area": "",
+        # 刻意不带 id / system：需求明确要求去掉这两项
+        # （poOrder 新增联系人时会带 id=-1 与 system=380，我们按需求不发）
         "comxz": "1",
         "defaultlxr": True,
         "defaultlxrjson": "",
@@ -97,13 +101,48 @@ def build_contact(
     }
 
 
+def build_service_list(codes: list[str] | None) -> list[dict[str, Any]]:
+    """按勾选的服务代码生成报文的 serviceList。
+
+    字段口径取自 poOrder（`src/components/orderDetails/mawbAddPutAi.vue:8428` 的注释
+    「{servicecode:"服务code", requestcode:"要求code", oprequest:"服务要求",
+    isdel:"1.选中 2.未选中"}」）：`isdel` 恒为 "1"（选中）、`requestcode` 恒为空串、
+    `assignstatus` 固定 "0"（未分配）；`oprequest`（操作要求）面板暂未采集，先留空。
+
+    顺序按调用方给的原样（前端已按面板顺序排好），重复的服务代码只保留第一次出现。
+    """
+
+    seen: set[str] = set()
+    items: list[dict[str, Any]] = []
+    for raw in codes or []:
+        code = text_of(raw)
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        items.append(
+            {
+                "servicecode": code,
+                "requestcode": "",
+                "oprequest": "",
+                "assignstatus": "0",
+                "isdel": "1",
+            }
+        )
+    return items
+
+
 def build_submit_payload(
     form: dict[str, Any],
     order: dict[str, Any],
     czman: str,
     today: str | None = None,
+    service_codes: list[str] | None = None,
 ) -> dict[str, Any]:
-    """按需求文档组装提交报文。`today` 可注入，便于测试。"""
+    """按需求文档组装提交报文。`today` 可注入，便于测试。
+
+    `service_codes` 是服务项目面板勾选的服务代码（按面板顺序）：`None` 表示调用方
+    没给，按默认的唯凯配舱（OA0010）处理；空列表表示一项服务都不做。
+    """
 
     submit_date = today or date.today().isoformat()
     # 运输种类（出口/进口/国内）与服务方式（空运/海运/…）：命名沿用 poOrder 前端
@@ -112,6 +151,9 @@ def build_submit_payload(
     piece = text_of(form.get("ybpiece"))
     weight = text_of(form.get("ybweight"))
     volume = text_of(form.get("ybvolume"))
+    system_text = compute_system(opersystem, opersystemdom)
+    # 服务项目：None = 调用方没给（按默认唯凯配舱），给了就按给的来
+    codes = [FIXED_SERVICE_CODE] if service_codes is None else list(service_codes)
 
     return {
         # 订舱操作：取工具条的值（需求确认：不是固定值）
@@ -127,7 +169,9 @@ def build_submit_payload(
         "ybpiece": piece,
         "ybweight": weight,
         "ybvolume": volume,
-        "system": compute_system(opersystem, opersystemdom),
+        "system": system_text,
+        # 要求航班号：托书里没有、由操作员手工填写（前端必填），有值就带上
+        "hbh": text_of(form.get("hbh")),
         "hbrq": text_of(form.get("hbrq")),
         "englishpm": text_of(form.get("englishpm")),
         "chinesepm": text_of(form.get("chinesepm")),
@@ -139,16 +183,28 @@ def build_submit_payload(
         "address_shr_mawb": party_text(form, "consignee", "address"),
         "email_shr_mawb": party_text(form, "consignee", "email"),
         "phone_shr_mawb": party_text(form, "consignee", "phone"),
+        # 应收运费相关（契约《点击提交订单按钮》）：币种 / 是否含运费 / 费用包含方式，
+        # 以及几个"不做特殊处理"的哨兵值都写死；单价取表单。类型照契约原文——带引号的
+        # 是字符串、其余是数字（poOrder 前端 getInfo() 也是这么补默认值的：
+        # `inwageallinprice = inwageallinprice || 666666`、`isinwageallin_trans || 666666`）
+        "currency": "人民币",
+        "inwageallinclude": "4",
+        "isinwageallin": "1",
+        "inwageallinprice": text_of(form.get("inwageallinprice")),
+        "self_real_bp_freight_in": 10,
+        "cus_real_bp_freight_in": 0,
+        "isinwageallin_trans": 666666,
+        "inwageallinprice_trans": 666666,
+        "self_real_bp_trans_in": 10,
+        "cus_real_bp_trans_in": 0,
         "customerRelList": [build_contact(form, czman, submit_date)],
-        # 服务项目面板接入前只发固定的唯凯配舱服务项，文档里的第二个 [服务代码] 待补
-        "serviceList": [
-            {
-                "servicecode": FIXED_SERVICE_CODE,
-                "requestcode": "",
-                "oprequest": "",
-                "isdel": "1",
-            }
-        ],
+        # 服务项目：按面板勾选生成（顺序同面板）。「国内服务」业务不带 OA0010 ——
+        # poOrder 在 mawbAddPut.vue / mawbAddPutAi.vue 保存时会 continue 掉它
+        "serviceList": build_service_list(
+            [code for code in codes if code != FIXED_SERVICE_CODE]
+            if system_text == HOME_SYSTEM
+            else codes
+        ),
         "ybstoreList": [
             {
                 "khjcno": text_of(form.get("khjcno")),
@@ -243,8 +299,12 @@ class OrderSubmitService:
         order: dict[str, Any],
         czman: str,
         ticket: str = "",
+        service_codes: list[str] | None = None,
     ) -> OrderSubmitOutcome:
-        """提交一单；缺少操作人时按 poOrder 口径直接驳回。"""
+        """提交一单；缺少操作人时按 poOrder 口径直接驳回。
+
+        `service_codes` 是服务项目面板勾选的服务代码（按面板顺序）；None = 用默认值。
+        """
 
         operator = text_of(czman)
         if not operator:
@@ -263,7 +323,9 @@ class OrderSubmitService:
             return OrderSubmitOutcome(
                 ok=False, message="提交接口未配置（DOCMIND_ORDER_API_BASE）"
             )
-        payload = build_submit_payload(form, order, operator)
+        payload = build_submit_payload(
+            form, order, operator, service_codes=service_codes
+        )
         started = time.perf_counter()
         try:
             raw = await self.collector.submit_order(payload, ticket=ticket)

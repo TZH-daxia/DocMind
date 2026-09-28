@@ -14,6 +14,11 @@
  * 注意：localStorage / sessionStorage 按「协议 + 主机 + 端口」隔离，读不到 poOrder 的
  * `usrname` / `ticket`，所以票据这一项开发期只能靠 `?ticket=` 传。
  * 另外 Cookie 是明文可改的：它只是开发便利，不是安全依据。
+ *
+ * 票据的去向：读出来之后由 `api.js` 统一放进 **`Authorization` 请求头**发给 DocMind
+ * 后端（不进 URL、不进请求体），后端 `current_ticket` 依赖同口径读取后再透传给
+ * poOrder。URL 里的 `?ticket=` 只是开发期兜底，认不认由后端
+ * `DOCMIND_ALLOW_URL_TICKET` 决定（默认关闭）。
  */
 
 function fromQuery(name) {

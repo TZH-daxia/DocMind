@@ -32,6 +32,10 @@ import { SearchCombobox } from "./SearchCombobox.js";
  * `api/CustomerRel/GetCustomerRel`，默认联系人按站点 + 业务系统自动带出；
  * 选中的那条写回 `form.customerRelList`，提交时取它填报文的 `name/mobile/phone`。
  */
+// 信控查询的去重窗口（毫秒）：同一个「客户 + 站点 + 系统」在这个窗口内只打一次上游。
+// 保持很短，既能吃掉切任务时的重复触发，又不会让信控结论明显变旧（信控是实时的）
+const CREDIT_DEDUPE_MS = 3000;
+
 export const CustomerProjectBar = {
   name: "CustomerProjectBar",
   components: { ContactSelect, ProjectSelect, SearchCombobox },
@@ -46,6 +50,9 @@ export const CustomerProjectBar = {
       creditHint: "",
       // 信控查询的请求序号：写回前比对，丢弃过期响应
       creditSeq: 0,
+      // 同一目标（客户 + 站点 + 系统）刚查过的记录：切任务时 form 赋值与站点恢复会各
+      // 触发一次查询，两个请求同时打上游既慢又白费 —— 短窗口内去重，见 CREDIT_DEDUPE_MS
+      creditCache: { key: "", at: 0 },
     };
   },
   computed: {
@@ -103,15 +110,24 @@ export const CustomerProjectBar = {
         // 客户没选（手输未选），或站点被清空（项目站点权限不通过时会清空站点）：
         // 信控是「客户 + 站点」两个维度的，缺一个就没有结论，直接收起这一行
         this.creditHint = "";
+        this.creditCache = { key: "", at: 0 };
         return;
       }
+      // 信控按 fid + 站点 + 业务系统 三个维度查（漏了 system 会少掉系统专属的限制）
+      const system = derivedSystem(dialogState.order);
+      // 同一目标刚查过就不再打上游：切换任务时同一个目标会被触发两次
+      //（form 整体替换一次、站点恢复一次），去重后只留一个请求，避免和原件图片抢连接
+      const cacheKey = `${fid}|${this.currentArea}|${system}`;
+      const now = Date.now();
+      if (
+        this.creditCache.key === cacheKey &&
+        now - this.creditCache.at < CREDIT_DEDUPE_MS
+      ) {
+        return;
+      }
+      this.creditCache = { key: cacheKey, at: now };
       try {
-        // 信控按 fid + 站点 + 业务系统 三个维度查（漏了 system 会少掉系统专属的限制）
-        const payload = await fetchCredit(
-          fid,
-          this.currentArea,
-          derivedSystem(dialogState.order),
-        );
+        const payload = await fetchCredit(fid, this.currentArea, system);
         if (seq !== this.creditSeq) {
           return;
         }

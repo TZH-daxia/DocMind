@@ -98,6 +98,12 @@ DOCMIND_CUSTOMER_API_BASE=
 # 不要写 * —— 接口目前没有鉴权，写 * 等于任何站点都能读走响应内容。
 DOCMIND_CORS_ALLOW_ORIGINS=https://ai.wecanintl.com
 
+# ===== poOrder 票据（提交订单 / 用户默认设置）=====
+# 票据走请求头（Authorization，备用 X-PoOrder-Ticket），由调用方携带、DocMind 只透传。
+# 下面这项是**开发期**兜底（允许 ?ticket=），生产保持默认关闭：
+# 票据进 URL 会跟着进浏览器历史、Referer 与网关访问日志。
+# DOCMIND_ALLOW_URL_TICKET=0
+
 # ===== 并发（按机器规格调整，示例为 16 核 / 64G）=====
 DOCMIND_LO_MAX_CONCURRENT=8       # 不要超过 CPU 核数；留一半给光栅化与 Web
 DOCMIND_MODEL_MAX_CONCURRENT=8    # 纯网络等待，瓶颈在上游限流

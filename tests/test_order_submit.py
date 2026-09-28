@@ -107,9 +107,92 @@ def test_payload_maps_form_and_fixed_values() -> None:
     )
     # 需求文档漏掉、后续需求要求加上的预报尺寸备注
     assert payload["ybvolumeremark"] == "120x80x60CM"
-    # 不进本接口的字段
-    assert "inwageallinprice" not in payload
+    # 应收运费相关（契约《点击提交订单按钮》）：单价取表单，其余写死。
+    # 注意：早前一份需求要求"不进本接口"，这份契约又要回来了
+    assert payload["currency"] == "人民币"
+    assert payload["inwageallinclude"] == "4"
+    assert payload["isinwageallin"] == "1"
+    assert payload["inwageallinprice"] == ""  # FORM 里没填单价
+    assert payload["self_real_bp_freight_in"] == 10
+    assert payload["cus_real_bp_freight_in"] == 0
+    assert payload["isinwageallin_trans"] == 666666
+    assert payload["inwageallinprice_trans"] == 666666
+    assert payload["self_real_bp_trans_in"] == 10
+    assert payload["cus_real_bp_trans_in"] == 0
+    # 传了单价就带上（字符串，与其它数字字段一致）
+    priced = build_submit_payload({**FORM, "inwageallinprice": "168.5"}, ORDER, "zhangsan")
+    assert priced["inwageallinprice"] == "168.5"
+    # 前端派生字段仍不进报文
     assert "inwageallintotal" not in payload
+
+
+def test_payload_keeps_blank_flight_number() -> None:
+    """要求航班号（hbh）：报文里保留这个键、值恒为空串。
+
+    前端已按需求去掉这个输入框，表单不再提交 hbh；契约里这个字段仍在，
+    所以这里只保证「键在、值为空」，也不再参与前端必填校验。
+    """
+
+    assert build_submit_payload(FORM, ORDER, "zhangsan")["hbh"] == ""
+
+
+def test_service_list_follows_panel_selection() -> None:
+    """serviceList 由服务项目面板的勾选决定：顺序、去重、空选择都按前端给的来。"""
+
+    item = {
+        "requestcode": "",
+        "oprequest": "",
+        "assignstatus": "0",
+        "isdel": "1",
+    }
+    picked = build_submit_payload(
+        FORM, ORDER, "zhangsan", service_codes=["AA0110", "OA0010", "AG0145"]
+    )
+
+    assert picked["serviceList"] == [
+        {"servicecode": "AA0110", **item},
+        {"servicecode": "OA0010", **item},
+        {"servicecode": "AG0145", **item},
+    ]
+
+    # 不传 = 默认唯凯配舱（与面板的默认勾选一致）
+    assert [
+        entry["servicecode"]
+        for entry in build_submit_payload(FORM, ORDER, "zhangsan")["serviceList"]
+    ] == ["OA0010"]
+
+    # 空列表 = 一项服务都不做
+    assert (
+        build_submit_payload(FORM, ORDER, "zhangsan", service_codes=[])[
+            "serviceList"
+        ]
+        == []
+    )
+
+    # 重复的服务代码只保留第一次出现，空值丢掉
+    assert [
+        entry["servicecode"]
+        for entry in build_submit_payload(
+            FORM, ORDER, "zhangsan", service_codes=["AA0110", "", "AA0110", "AG0145"]
+        )["serviceList"]
+    ] == ["AA0110", "AG0145"]
+
+
+def test_service_list_drops_booking_service_for_home_business() -> None:
+    """「国内服务」业务不带 OA0010（poOrder 保存报文时会 continue 掉它）。"""
+
+    home_order = {
+        "area": "上海",
+        "opersystem": "国内",
+        "opersystemdom": "空运",
+        "czlx": "自货",
+    }
+    payload = build_submit_payload(
+        FORM, home_order, "zhangsan", service_codes=["OA0010", "AA0110"]
+    )
+
+    assert payload["system"] == "国内服务"
+    assert [entry["servicecode"] for entry in payload["serviceList"]] == ["AA0110"]
 
 
 def test_payload_nested_lists() -> None:
@@ -125,14 +208,20 @@ def test_payload_nested_lists() -> None:
     assert contact["lxrtitle"] == "客服"
     assert contact["post"] == "客服"
     assert contact["area"] == "" and contact["email"] == "" and contact["qq"] == ""
-    # 按需求确认去掉这两项
+    # 需求明确要求不带这两项（契约样例里有 id=-1 / system=380，按需求去掉）
     assert "id" not in contact
     assert "system" not in contact
     # 客服联系人主数据未接入：姓名/手机/电话先为空
     assert contact["name"] == "" and contact["mobile"] == "" and contact["phone"] == ""
 
     assert payload["serviceList"] == [
-        {"servicecode": "OA0010", "requestcode": "", "oprequest": "", "isdel": "1"}
+        {
+            "servicecode": "OA0010",
+            "requestcode": "",
+            "oprequest": "",
+            "assignstatus": "0",
+            "isdel": "1",
+        }
     ]
 
     store = payload["ybstoreList"][0]

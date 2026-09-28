@@ -17,6 +17,11 @@ import { dialogState } from "../state.js";
  * 交互与「项目」下拉同构（见 ProjectSelect）：按钮 + 向左展开的纯姓名列表，
  * 点组件之外收起；没有候选时按钮不可点，原因写在 title 里。
  */
+// 联系人查询的去重窗口（毫秒）：同一个「客户 + 站点 + 系统」在这个窗口内只打一次上游。
+// 切任务时 form 整体替换与站点恢复会各触发一次查询，去重后只留一个请求，
+// 避免和左侧原件图片抢连接（上游一次要 250ms 左右）
+const CONTACT_DEDUPE_MS = 3000;
+
 export const ContactSelect = {
   name: "ContactSelect",
   props: {
@@ -35,6 +40,8 @@ export const ContactSelect = {
       loaded: false,
       // 查询序号：切客户/换站点时丢弃过期响应
       seq: 0,
+      // 同一目标（客户 + 站点 + 系统）刚查过的记录，用于短窗口去重
+      loadCache: { key: "", at: 0 },
     };
   },
   computed: {
@@ -149,8 +156,19 @@ export const ContactSelect = {
         // 没客户 / 没站点都不查：poOrder 的 getCustomerRelData 开头也是 `if (!area) return`
         this.items = [];
         this.loaded = false;
+        this.loadCache = { key: "", at: 0 };
         return;
       }
+      // 同一目标刚查过就不再打上游（切任务时会连续触发两次）
+      const cacheKey = `${fid}|${this.area}|${this.system}`;
+      const now = Date.now();
+      if (
+        this.loadCache.key === cacheKey &&
+        now - this.loadCache.at < CONTACT_DEDUPE_MS
+      ) {
+        return;
+      }
+      this.loadCache = { key: cacheKey, at: now };
       try {
         const payload = await fetchContacts(fid, this.area, this.system);
         if (seq !== this.seq) {

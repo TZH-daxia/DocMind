@@ -1,3 +1,5 @@
+import { currentTicket } from "./currentUser.js";
+
 // 与后端 Settings.api_prefix + router 前缀保持一致（见 app/config.py）
 const BASE_URL = "/docmind/analysis";
 
@@ -44,6 +46,14 @@ export async function fetchSites() {
   return request(`${BASE_URL}/sites`);
 }
 
+// 用户默认设置：poOrder 用户设置模板（type=110）里的订单新增默认值，
+// 供工具条预填站点 / 服务方式 / 运输种类。取不到时各项为空串，前端用内置兜底值；
+// 票据由 ticketHeaders() 统一放在请求头（后端据此调 poOrder 的 api/UserTemplet）
+export async function fetchUserDefaults(logname) {
+  const params = logname ? `?logname=${encodeURIComponent(logname)}` : "";
+  return request(`${BASE_URL}/user-defaults${params}`);
+}
+
 // 委托客户的信用等级与信控提示：选完客户后显示在其输入框下方。
 // area 传当前站点（信控按站点分别校验），返回 { enabled, level, message, hint }
 export async function fetchCredit(fid, area = "", system = "") {
@@ -72,8 +82,24 @@ export async function submitOrder(body) {
   });
 }
 
+/**
+ * poOrder 票据统一走**请求头**，不放 URL：地址栏里的 ticket 会跟着进浏览器历史、
+ * `Referer` 与网关访问日志，等于把登录凭据写进日志。
+ *
+ * 开发期跨端口调试读不到 poOrder 的 storage，仍可用 `?ticket=` 兜底 —— 读取顺序在
+ * `currentUser.js`（URL 参数优先，其次 Cookie），认不认 URL 里那个由后端
+ * `DOCMIND_ALLOW_URL_TICKET` 决定（默认关闭）。
+ */
+function ticketHeaders() {
+  const ticket = currentTicket();
+  return ticket ? { Authorization: ticket } : {};
+}
+
 async function request(url, options = {}) {
-  const response = await fetch(url, options);
+  const response = await fetch(url, {
+    ...options,
+    headers: { ...ticketHeaders(), ...(options.headers || {}) },
+  });
   let payload = {};
   try {
     payload = await response.json();

@@ -1,10 +1,12 @@
 import { FIELD_LABELS, REQUIRED_FIELDS } from "../constants.js";
 import { buildFieldRows } from "../fields.js";
+import { countPickedServices } from "../serviceItems.js";
 import { resultDialog } from "../composables/useResultDialog.js";
 import { dialogState } from "../state.js";
 import { DocumentPreview } from "./DocumentPreview.js";
 import { FieldFormPanel } from "./FieldFormPanel.js";
 import { FileTabStrip } from "./FileTabStrip.js";
+import { ServicePanelDialog } from "./ServicePanelDialog.js";
 
 function notify(message, type) {
   document.dispatchEvent(
@@ -14,9 +16,13 @@ function notify(message, type) {
 
 export const ResultDialog = {
   name: "ResultDialog",
-  components: { DocumentPreview, FieldFormPanel, FileTabStrip },
+  components: { DocumentPreview, FieldFormPanel, FileTabStrip, ServicePanelDialog },
   data() {
-    return { state: dialogState };
+    return {
+      state: dialogState,
+      // 服务项目面板是否打开：只影响这一处，留在组件本地，不进全局 state
+      servicePanelOpen: false,
+    };
   },
   computed: {
     fields() {
@@ -24,6 +30,10 @@ export const ResultDialog = {
     },
     formDisabled() {
       return Boolean(dialogState.error);
+    },
+    // 工具条按钮右上角的已选数量：只算操作员主动勾的服务（不含配舱服务）
+    pickedServiceCount() {
+      return countPickedServices(dialogState.serviceCodes);
     },
   },
   methods: {
@@ -37,9 +47,8 @@ export const ResultDialog = {
       resultDialog.focusField(payload);
     },
     onSelectServices() {
-      // 服务项目面板（服务代码的增删改）尚未接入：先明确告知，
-      // 避免按下去没反应让人以为按钮坏了
-      notify("服务项目面板尚未接入", "error");
+      // 打开服务项目面板：勾选结果直接写回 dialogState.serviceCodes（提交时进 serviceList）
+      this.servicePanelOpen = true;
     },
     async onSubmit() {
       if (this.state.submitted || this.state.submitting) {
@@ -108,18 +117,9 @@ export const ResultDialog = {
           </div>
           <!-- 收起：设计稿改为右上角的圆形叉号，只负责关闭弹窗；提交已移到弹窗底部 -->
           <div class="doc-dialog-head-actions">
-            <!-- 订舱编号：提交成功后 poOrder 返回的编号，放在叉号左侧
-                 （原先放工具条的编号槽，17 位编号会把右侧四个胶囊挤出去造成遮挡） -->
+            <!-- 订舱编号已挪到工具条最左边（与表头「项目」二字左对齐，见 OrderToolbar） -->
             <!-- 注意：本组件的 template 整体就是一层反引号字符串，这里**不能**再用
                  模板字符串（内层反引号会把外层提前截断，整个模块直接加载失败） -->
-            <span
-              v-if="state.orderCode"
-              class="doc-dialog-order-code"
-              :title="'订舱编号 ' + state.orderCode"
-            >
-              <i class="doc-dialog-order-code-dot" aria-hidden="true"></i>
-              <span class="doc-dialog-order-code-text">订舱编号 {{ state.orderCode }}</span>
-            </span>
             <button
               class="doc-dialog-collapse"
               type="button"
@@ -152,6 +152,8 @@ export const ResultDialog = {
             :disabled="formDisabled"
             :locked="state.submitted"
             :reset-key="state.taskId"
+            :service-count="pickedServiceCount"
+            :order-code="state.orderCode"
             @field-focus="onFieldFocus"
             @select-services="onSelectServices"
           />
@@ -167,6 +169,15 @@ export const ResultDialog = {
           ><span v-if="state.submitting" class="doc-dialog-spinner" aria-hidden="true"></span>提交订单</button>
         </footer>
       </section>
+      <!-- 服务项目面板：勾选本票要做的服务（可多选），结果写回 state.serviceCodes -->
+      <ServicePanelDialog
+        :open="servicePanelOpen"
+        :model-value="state.serviceCodes"
+        :booking-type="state.order.czlx"
+        :locked="state.submitted"
+        @update:model-value="state.serviceCodes = $event"
+        @close="servicePanelOpen = false"
+      />
     </div>
   `,
 };

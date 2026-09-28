@@ -1,15 +1,15 @@
 export const FIELD_ORDER = [
   "fid",
+  // 进仓编号：托书里没有、由操作员手工填写，排在始发港上边
+  "khjcno",
   "sfg",
   "mdg",
   "ybpiece",
   "ybweight",
   "ybvolume",
-  "hbrq",
-  // 进仓编号 / 预报尺寸备注：托书里没有、由操作员手工填写，因此排在航班日期之后，
-  // 即在「抽取值 → 人工补录值」的交界处（口径见下方 REQUIRED_FIELDS 的说明）
-  "khjcno",
+  // 预报尺寸备注：同上，手工填写，排在总体积下边
   "ybvolumeremark",
+  "hbrq",
   "inwageallinprice",
   "chinesepm",
   "englishpm",
@@ -71,6 +71,12 @@ export const FIELD_CONTROLS = {
   consignee: "party",
 };
 
+// 个别人工补录字段的输入框占位文案（没有条目的字段不显示占位）。
+// 预报尺寸备注的提示语来自需求：既要说明怎么填（填写或复制粘贴），也要说明用途（供航线订舱）
+export const FIELD_PLACEHOLDERS = {
+  ybvolumeremark: "请填写或复制粘贴所有尺寸信息，供航线订舱使用",
+};
+
 export const PARTY_LABELS = {
   shipper: "发货人",
   consignee: "收货人",
@@ -84,6 +90,7 @@ export const PARTY_FIELDS = [
 ];
 
 // 提交校验的必填项：8 个后端必填字段 + 前端派生的预计运费总额 + 2 个手工补录字段
+//（进仓编号 khjcno、预报尺寸备注 ybvolumeremark）
 //
 // 进仓编号（khjcno）在 poOrder 里一律 `required: true`（newOrderAdd.vue 的
 // baseInfoInputViewData、service.js 的 homeInformation、houseNumberAdd 明细行），
@@ -95,15 +102,16 @@ export const PARTY_FIELDS = [
 //「请填写尺寸备注！」）。这里按当前需求统一设为必填，若以后要跟 poOrder 一致，
 // 改成「按 dialogState.order.czlx 判断」即可（字段值本身不用动）。
 export const REQUIRED_FIELDS = [
+  // 顺序与表单展示顺序一致：校验失败时会聚焦第一个出错的字段
   "fid",
+  "khjcno",
   "sfg",
   "mdg",
   "ybpiece",
   "ybweight",
   "ybvolume",
-  "hbrq",
-  "khjcno",
   "ybvolumeremark",
+  "hbrq",
   "inwageallinprice",
   TOTAL_FIELD_KEY,
 ];

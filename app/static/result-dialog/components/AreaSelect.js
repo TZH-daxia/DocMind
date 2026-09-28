@@ -9,9 +9,10 @@
  * 文案与取值都跟 poOrder 一致：显示字典原文（如「上海丨SHA」），进提交报文的
  * value 是站点中文名（areaSelect 的 valuetype 默认取 1，见其 cities 计算属性）。
  *
- * 触发胶囊沿用工具条样式（.doc-order-chip），宽度仍由「可能出现的所有文案」撑定
- * （同 ToolbarSelect），避免选前选后把右边的胶囊推来推去。候选未接入时（groups
- * 为空）面板给出说明，且胶囊仍显示订单上下文带来的原值，不会退回占位。
+ * 触发胶囊沿用工具条样式（.doc-order-chip），但**宽度自适应**：放的是当前值的实文，
+ * 不再用隐身文案撑宽 —— 站点文案长短不一（「上海丨SHA」…），定宽要么留白要么截断。
+ * 它右侧只有「本票客户客服联系人」，被挤动的代价很小。
+ * 候选未接入时（groups 为空）面板给出说明，且胶囊仍显示订单上下文带来的原值。
  */
 export const AreaSelect = {
   name: "AreaSelect",
@@ -42,15 +43,6 @@ export const AreaSelect = {
       // 取值不在字典里（订单上下文带来的站点可能已停用）时直接显示原值，
       // 否则操作员会以为这一项没值
       return this.selected ? this.selected.label : this.modelValue;
-    },
-    // 参与撑宽度的文案：占位 + 全部站点文案 + 当前取值（去重是为了 v-for 的 key 唯一）
-    sizerTexts() {
-      const texts = [
-        this.placeholder,
-        ...this.flatOptions.map((item) => item.label),
-        this.modelValue,
-      ];
-      return [...new Set(texts.filter(Boolean))];
     },
   },
   mounted() {
@@ -89,10 +81,7 @@ export const AreaSelect = {
         @click="toggle"
         @keydown.esc="open = false"
       >
-        <span class="doc-order-chip-label">{{ display }}</span>
-        <span class="doc-order-chip-sizer" aria-hidden="true">
-          <span v-for="text in sizerTexts" :key="text">{{ text }}</span>
-        </span>
+        <span class="doc-order-chip-label is-flow">{{ display }}</span>
         <i class="doc-order-chip-caret" aria-hidden="true"></i>
       </button>
       <div v-if="open" class="doc-dialog-combobox-menu doc-order-menu doc-site-menu">

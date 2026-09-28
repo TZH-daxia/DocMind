@@ -1,3 +1,6 @@
+import { FALLBACK_ORDER_DEFAULTS } from "./orderDefaults.js";
+import { DEFAULT_SERVICE_CODES } from "./serviceItems.js";
+
 const { reactive } = window.Vue;
 
 export const dialogState = reactive({
@@ -31,18 +34,18 @@ export const dialogState = reactive({
   siteGroups: [],
   siteGroupsLoaded: false,
   // 订单级上下文（工具条上的单号 / 唯凯站点 / 服务方式 / 运输种类 / 订舱操作）：
-  // 来自上传时页面传入的 context，提交前可在这里核对与修正。
-  // 唯凯站点 / 服务方式 / 运输种类先给演示默认值（上海 / 空运 / 出口）：
-  // context 还没接上，否则打开预览页时这三项是空占位；等 context 接通后由真实值覆盖。
-  // 订舱操作默认「自货（唯凯配舱）」：与 poOrder 订单新增页的默认值一致，且该值要进
-  // 提交报文的 czlx，不能为空（提交前还有一道兜底校验，见 useResultDialog.submit）
+  // 四项默认值按「上传 context > 用户默认设置 > 内置兜底」解析，再叠加该任务
+  // **人工改过**的字段（见 orderDefaults.js），这里是最后一级兜底；打开任务时由
+  // loadTask 覆盖。订舱操作兜底「自货（唯凯配舱）」与 poOrder 订单新增页一致，
+  // 且该值要进提交报文的 czlx，不能为空（提交前还有一道兜底校验，见 useResultDialog.submit）
   order: {
     code: "",
-    area: "上海",
-    opersystemdom: "空运",
-    opersystem: "出口",
-    czlx: "自货",
+    ...FALLBACK_ORDER_DEFAULTS,
   },
+  // 服务项目面板里勾选的服务代码（提交报文 serviceList 的来源）。
+  // 默认勾上唯凯配舱（OA0010）——与 poOrder 订单新增页的默认一致；
+  // 与表单 / 订单上下文一样按任务持久化（见 draftForms.js），切任务 / 刷新后不丢
+  serviceCodes: [...DEFAULT_SERVICE_CODES],
   // 提交成功后 poOrder 返回的订舱编号（按任务持久化，见 submittedTasks.js）：
   // 显示在弹窗头部、叉号左侧。不放工具条的编号槽——那里是「单据编号」的位置，
   // 17 位订舱编号会把右侧四个胶囊挤出去造成遮挡
@@ -70,15 +73,13 @@ export function resetDialogContent() {
   dialogState.highlightStatus = "";
   dialogState.fieldStatus = {};
   dialogState.errors = {};
-  // 与初始值保持一致：站点/服务方式/运输种类是演示默认值（上海 / 空运 / 出口），
-  // 等 context 接通后被真实值覆盖；订舱操作默认「自货」是业务默认值（同 poOrder）
+  // 与初始值保持一致：四项回到内置兜底（打开下一个任务时由 loadTask 重算）
   dialogState.order = {
     code: "",
-    area: "上海",
-    opersystemdom: "空运",
-    opersystem: "出口",
-    czlx: "自货",
+    ...FALLBACK_ORDER_DEFAULTS,
   };
+  // 服务项目回到默认勾选（唯凯配舱）
+  dialogState.serviceCodes = [...DEFAULT_SERVICE_CODES];
   dialogState.orderCode = "";
   dialogState.submitted = false;
 }

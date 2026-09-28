@@ -57,6 +57,7 @@ from app.service.project_service import ProjectService
 from app.service.order_submit_service import OrderSubmitService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.service.site_service import SiteService
+from app.service.user_default_service import UserDefaultService
 from app.storage.file_store import FileStore
 from app.workflow.errors import TaskCancelledError, TaskPausedError
 from app.workflow.events import WorkflowEvent, WorkflowEventPublisher, now_iso
@@ -354,6 +355,7 @@ class AnalysisService(WorkflowEventPublisher):
         self.site_service = SiteService(settings, self.file_store)
         self.order_submit_service = OrderSubmitService(settings)
         self.project_service = ProjectService(settings, self.file_store)
+        self.user_default_service = UserDefaultService(settings)
         # 并发闸门按名字惰性创建：信号量必须在事件循环内构造，而服务是进程级
         # 单例（启动阶段与首次请求都会取用），因此延迟到真正执行任务时创建
         self._gates: dict[str, asyncio.Semaphore] = {}
@@ -1401,20 +1403,38 @@ class AnalysisService(WorkflowEventPublisher):
 
         return await self.customer_contact_service.list_contacts(fid, area, system)
 
+    async def get_user_defaults(self, logname: str, ticket: str = "") -> dict[str, Any]:
+        """取某个登录名在 poOrder 里的订单新增默认设置。
+
+        三项与工具条一一对应：`area`（唯凯站点）、`opersystemdom`（服务方式）、
+        `opersystem`（运输种类）；数据来自 `api/UserTemplet` 的 `type=110` 记录。
+        接口未接入、调用失败或该用户没配设置时各项为空串（`enabled` 表示接口是否
+        接入），前端据此退化为内置默认值。`ticket` 由调用方按请求透传给 poOrder。
+        """
+
+        defaults = await self.user_default_service.get_defaults(logname, ticket)
+        return defaults.model_dump(mode="json")
+
     async def submit_order(
         self,
         form: dict[str, Any],
         order: dict[str, Any],
         czman: str,
         ticket: str = "",
+        service_codes: list[str] | None = None,
     ) -> dict[str, Any]:
         """提交订单：组装报文并调用 poOrder 的提交接口。
 
-        表单与订单上下文由前端给出（弹窗里可能被人工改过），后端只按报文契约取值。
+        表单与订单上下文由前端给出（弹窗里可能被人工改过），后端只按报文契约取值；
+        `service_codes` 是服务项目面板勾选的服务代码（按面板顺序）。
         """
 
         outcome = await self.order_submit_service.submit(
-            form=form, order=order, czman=czman, ticket=ticket
+            form=form,
+            order=order,
+            czman=czman,
+            ticket=ticket,
+            service_codes=service_codes,
         )
         return outcome.model_dump(mode="json")
 

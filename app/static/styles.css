@@ -1088,9 +1088,9 @@ select:focus {
   min-width: 0;
 }
 
-/* 弹窗头部的订舱编号（提交成功后 poOrder 返回，放在叉号左侧）。
-   原先放在工具条的编号槽里，但 17 位编号会把右侧四个胶囊挤出可视区造成遮挡，
-   所以移到头部；观感沿用工具条那枚琥珀色圆点编号 */
+/* 订舱编号（提交成功后 poOrder 返回）：显示在工具条最左边，与下方表头「项目」二字左对齐；
+   四个胶囊仍由 .doc-order-chips 的 margin-left: auto 靠右，中间留白吃掉两者间距。
+   空间不足时吃省略号（完整值在 title 里），不去挤别的组件 */
 .doc-dialog-order-code {
   display: inline-flex;
   align-items: center;
@@ -1195,6 +1195,12 @@ select:focus {
   white-space: nowrap;
 }
 
+/* 站点胶囊（AreaSelect）没有 sizer：当前值回到文档流里，自己把胶囊撑成宽度自适应 */
+.doc-order-chip-label.is-flow {
+  position: static;
+  transform: none;
+}
+
 .doc-order-chip.is-set .doc-order-chip-trigger {
   color: #3b85fb;
 }
@@ -1290,19 +1296,21 @@ select:focus {
   background: var(--doc-caret-icon) center / 18px 18px no-repeat;
 }
 
-/* 服务项目（带 icon 按钮）：10% 蓝底 + 30% 蓝边 + 蓝字，
-   尺寸与左侧四个胶囊一致（32px / 6-8 内边距 / 4px 圆角） */
+/* 服务项目（带 icon 按钮）：默认与左侧四个胶囊同一套配色（#F9FAFC 底 + #E5E7EB 边 +
+   深色字），悬浮时才转蓝；尺寸也一致（32px / 6-8 内边距 / 4px 圆角） */
 .doc-order-services {
+  /* 角标（已选数量）绝对定位在按钮右上角，因此按钮自身要成为定位参照 */
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
   height: 32px;
   padding: 6px 8px;
-  border: 1px solid rgba(59, 133, 251, 0.3);
+  border: 1px solid #e5e7eb;
   border-radius: 4px;
-  background: rgba(59, 133, 251, 0.1);
-  color: #3b85fb;
+  background: #f9fafc;
+  color: #1e293b;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   font-weight: 400;
@@ -1311,7 +1319,9 @@ select:focus {
 }
 
 .doc-order-services:hover {
-  background: rgba(59, 133, 251, 0.18);
+  border-color: #3b85fb;
+  background: rgba(59, 133, 251, 0.08);
+  color: #3b85fb;
 }
 
 /* 服务项目图标：直接内联设计稿 SVG（18×18 视口，内含 1px 内缩的 16×16 蓝色圆角方块，
@@ -2109,6 +2119,12 @@ select:focus {
   font-size: 12px;
 }
 
+/* 输入框里的占位文案（如预报尺寸备注的填写提示）：用提示级的浅灰，
+   避免浏览器默认的深灰被误当成已填内容 */
+.doc-dialog-input::placeholder {
+  color: #9aa8af;
+}
+
 .doc-dialog-input:focus {
   outline: none;
   border-color: var(--blue);
@@ -2301,4 +2317,190 @@ textarea.doc-dialog-input {
     border-right: none;
     border-bottom: 1px solid var(--line);
   }
+}
+
+/* ---- 服务项目面板（订单工具条右侧「服务项目」按钮弹出） ----
+   版式对齐 poOrder 订单新增页的「服务项目（选填）」模块：
+   板块（出港操作 / 出港配套服务 / 进港服务）→ 类别分列 → 每项一个复选框。
+   层级在结果弹窗之上（结果弹窗 mask 是 z-index: 40） */
+.doc-service-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.doc-service-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 33, 43, 0.45);
+}
+
+.doc-service-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(1120px, 92vw);
+  max-height: min(760px, 86vh);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 28px 60px rgba(16, 27, 36, 0.32);
+}
+
+.doc-service-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.doc-service-title {
+  margin: 0;
+  color: var(--navy);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.doc-service-title small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.doc-service-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 16px 20px 20px;
+}
+
+/* 板块：浅灰底 + 圆角（与 poOrder 服务项目模块的底色一致） */
+.doc-service-board {
+  padding: 12px 16px 16px;
+  border-radius: 8px;
+  background: #f8f8f8;
+}
+
+.doc-service-board-title {
+  margin: 0 0 10px;
+  color: var(--navy);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 类别分列：四列自动流，与参考图一致（类别少时自动靠左，不撑宽） */
+.doc-service-groups {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 24px;
+  align-items: start;
+}
+
+.doc-service-group-title {
+  margin: 0 0 6px;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.doc-service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-service-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--navy);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.doc-service-entry.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.doc-service-entry input {
+  margin: 0;
+  cursor: inherit;
+}
+
+.doc-service-entry-name {
+  white-space: nowrap;
+}
+
+.doc-service-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.doc-service-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.doc-service-count b {
+  color: var(--blue);
+}
+
+.doc-service-done {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 5px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.doc-service-done:hover {
+  opacity: 0.9;
+}
+
+@media (max-width: 1024px) {
+  .doc-service-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 「服务项目」按钮右上角的已选数量：绝对定位、**不占位**，因此不会把按钮撑大或挤动；
+   默认中性色，跟按钮一起在悬浮时转蓝（数量为 0 时不渲染） */
+.doc-order-services-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #eef1f5;
+  color: #64748b;
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.doc-order-services:hover .doc-order-services-count {
+  background: rgba(59, 133, 251, 0.14);
+  color: #3b85fb;
 }

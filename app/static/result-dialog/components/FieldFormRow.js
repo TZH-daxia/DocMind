@@ -1,5 +1,9 @@
 import { PORT_COMBOBOX } from "../comboboxAdapters.js";
-import { FIELD_STATUS_LABELS, REVIEW_STATUSES } from "../constants.js";
+import {
+  FIELD_PLACEHOLDERS,
+  FIELD_STATUS_LABELS,
+  REVIEW_STATUSES,
+} from "../constants.js";
 import { CustomerProjectBar } from "./CustomerProjectBar.js";
 import { DatePicker } from "./DatePicker.js";
 import { SearchCombobox } from "./SearchCombobox.js";
@@ -143,6 +147,10 @@ export const FieldFormRow = {
       return JSON.stringify(this.target) !== JSON.stringify(this.originalValue);
     },
     rawHint() {
+      // 已提交：这一单已是终态，不再提示「原文不是标准日期/纯数字」
+      if (this.locked) {
+        return "";
+      }
       const raw = this.rawValues[this.row.fieldKey];
       if (!raw) {
         return "";
@@ -152,6 +160,10 @@ export const FieldFormRow = {
         : `原文：${raw}（不是纯数字，请重新填写）`;
     },
     reviewHint() {
+      // 已提交：不再展示「要审核的原文」，提交后的界面只留核对结果
+      if (this.locked) {
+        return "";
+      }
       // 待审核类字段：把文档原文显示在输入框下，人工核对时不必来回翻原件
       if (!REVIEW_STATUSES.includes(this.row.status)) {
         return "";
@@ -179,6 +191,10 @@ export const FieldFormRow = {
       return (this.evidences[this.row.fieldKey] || []).join(" ／ ");
     },
     badge() {
+      // 已提交：状态标记（已修改 / 待审核 / 缺失 / 无效）不再显示
+      if (this.locked) {
+        return "";
+      }
       if (this.row.control === "computed") {
         return "";
       }
@@ -227,6 +243,10 @@ export const FieldFormRow = {
       // 提交前校验的失败原因（后端逐字段下发），行内展示
       return typeof this.error === "string" ? this.error : "";
     },
+    // 少数人工补录字段的占位提示（如预报尺寸备注）；没配置的字段不显示占位
+    placeholder() {
+      return FIELD_PLACEHOLDERS[this.row.fieldKey] || "";
+    },
     hasExtractedValue() {
       // 用"抽取出来的原值"判断，而不是当前输入框内容：人工补录的值本来
       // 就不在文档里，不该被当成"未定位"
@@ -244,7 +264,9 @@ export const FieldFormRow = {
       // 只在"抽取到了值、但原文里定位不到、且人还没改过"时提示：
       // - 空值字段已有「缺失」标记，不需要再来一个「未定位」
       // - 人工补录/修改后是「已修改」，未定位的说明已失效
+      // - 已提交：界面只留核对结果，不再摆这类标记
       return (
+        !this.locked &&
         Boolean(this.row.locationKey) &&
         this.hasExtractedValue &&
         !this.dirty &&
@@ -259,7 +281,8 @@ export const FieldFormRow = {
           <span class="doc-dialog-field-label">
             {{ row.label }}<i v-if="row.required" class="doc-dialog-required">*</i>
           </span>
-          <span class="doc-dialog-markers">
+          <!-- 已提交：整列标记（状态徽标 / 未定位）都不再占位，字段名收回这 80px -->
+          <span v-if="!locked" class="doc-dialog-markers">
             <span class="doc-dialog-marker-slot">
               <em v-if="badge" class="doc-dialog-badge" :class="badgeClass">{{ badge }}</em>
             </span>
@@ -300,6 +323,7 @@ export const FieldFormRow = {
           class="doc-dialog-input"
           rows="1"
           v-model="target"
+          :placeholder="placeholder"
           :readonly="locked"
           @input="onMultilineInput"
           @focus="onFieldFocus"
@@ -334,6 +358,7 @@ export const FieldFormRow = {
           class="doc-dialog-input"
           type="text"
           v-model="target"
+          :placeholder="placeholder"
           :readonly="locked"
           @focus="onFieldFocus"
         >

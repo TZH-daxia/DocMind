@@ -219,6 +219,8 @@ export const DocumentPreview = {
                 :src="page.url"
                 :alt="'第 ' + page.pageNo + ' 页'"
                 draggable="false"
+                fetchpriority="high"
+                decoding="async"
                 @load="markLoaded(page.url)"
                 @error="markFailed(page.url)"
               >

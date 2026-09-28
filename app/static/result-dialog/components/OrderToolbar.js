@@ -7,9 +7,8 @@ import { ToolbarSelect } from "./ToolbarSelect.js";
  * 版式对齐 Figma（Frame 91 / 101 / 102~105 / 带 icon 按钮）：
  * 48px 白底横条、左右 24px；左半是四个 32px 胶囊（组间距 16px、胶囊间距 8px），
  * 右端是「服务项目」（与胶囊间距一致，8px）。
- * Figma 里最左边还有一个「单据编号」槽，现已去掉：提交成功后 poOrder 返回的
- * 订舱编号有 17 位，放在工具条里会把右侧四个胶囊挤出可视区，因此改到弹窗头部
- * （叉号左侧）显示，见 ResultDialog.js 的 .doc-dialog-order-code。
+ * 最左边是订舱编号：提交成功后 poOrder 返回的编号（形如 BOAE2609240001PVG）显示在这里，
+ * 与下方表头「项目」二字左对齐；没提交过时这一格为空，四个胶囊仍靠右对齐。
  *
  * 取值域与 poOrder 订单新增页（src/components/newOrderAdd.vue 的 basicinfoView）一致：
  * - 服务方式 opersystemdom：空运 / 海运 / 陆运 / 铁运 / 其它
@@ -35,6 +34,10 @@ export const OrderToolbar = {
     order: { type: Object, required: true },
     // 唯凯站点候选：按分组传入（站点字典 groupid == 101），未接入时为空数组
     siteGroups: { type: Array, default: () => [] },
+    // 已勾选的服务项目数（服务项目面板里勾的数量），显示在按钮上
+    serviceCount: { type: Number, default: 0 },
+    // 订舱编号：提交成功后 poOrder 返回，显示在工具条最左边（与表头「项目」左对齐）
+    orderCode: { type: String, default: "" },
     locked: { type: Boolean, default: false },
   },
   emits: ["select-services"],
@@ -62,6 +65,14 @@ export const OrderToolbar = {
   },
   template: `
     <div class="doc-order-toolbar">
+      <span
+        v-if="orderCode"
+        class="doc-dialog-order-code"
+        :title="'订舱编号 ' + orderCode"
+      >
+        <i class="doc-dialog-order-code-dot" aria-hidden="true"></i>
+        <span class="doc-dialog-order-code-text">{{ orderCode }}</span>
+      </span>
       <div class="doc-order-group">
         <div class="doc-order-chips">
           <AreaSelect
@@ -98,8 +109,14 @@ export const OrderToolbar = {
           />
         </div>
       </div>
-      <button class="doc-order-services" type="button" @click="$emit('select-services')">
+      <button
+        class="doc-order-services"
+        type="button"
+        :title="serviceCount ? '已选 ' + serviceCount + ' 项服务，点击查看 / 修改' : '勾选本票要做的服务（选填）'"
+        @click="$emit('select-services')"
+      >
         <i class="doc-order-services-icon" aria-hidden="true"></i>服务项目
+        <span v-if="serviceCount" class="doc-order-services-count">{{ serviceCount }}</span>
       </button>
     </div>
   `,

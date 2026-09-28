@@ -4,17 +4,26 @@ import {
   fetchResult,
   fetchSites,
   fetchTaskStatus,
+  fetchUserDefaults,
   pageImageUrl,
   submitOrder,
 } from "../api.js";
-import { currentTicket, currentUserDom, currentUserName } from "../currentUser.js";
+import { currentUserDom, currentUserName } from "../currentUser.js";
 import {
   loadDraftForm,
   loadDraftOrder,
+  loadDraftServices,
   mergeDraftForm,
   rememberDraftForm,
   rememberDraftOrder,
+  rememberDraftServices,
 } from "../draftForms.js";
+import {
+  mergeOrderDelta,
+  orderDiffersFromBase,
+  resolveOrderDefaults,
+} from "../orderDefaults.js";
+import { DEFAULT_SERVICE_CODES, normalizeServiceCodes } from "../serviceItems.js";
 import {
   loadOrderCode,
   loadSubmittedTaskIds,
@@ -49,7 +58,11 @@ function rememberForm(taskId) {
     return;
   }
   rememberDraftForm(taskId, dialogState.form);
-  rememberDraftOrder(taskId, dialogState.order);
+  // 订单上下文一并存，并把"默认值基线"带上：重开时据此只沿用人工改过的字段
+  //（见 orderDefaults.js 的 mergeOrderDelta）
+  rememberDraftOrder(taskId, dialogState.order, orderBase);
+  // 服务项目落盘前先归一：带上配舱服务、按面板顺序，勾选顺序（点击顺序）不落盘
+  rememberDraftServices(taskId, normalizeServiceCodes(dialogState.serviceCodes));
 }
 
 // 输入即存（防抖 400ms）：填到一半就刷新/关标签页也不会丢。
@@ -74,25 +87,111 @@ watch(
   { deep: true },
 );
 
-// 工具条上的订单上下文（站点 / 服务方式 / 运输种类 / 订舱操作）同样按任务存：
-// 它全局只有一份，改一次就得落一次，否则切任务 / 刷新后会退回硬编码默认值
+// 工具条上的订单上下文（站点 / 服务方式 / 运输种类 / 订舱操作）同样按任务存，
+// 但**只存人工改过的**：与"打开任务时算出的默认值基线"一致时说明没人动过，
+// 不落草稿 —— 这样没被改过的任务始终跟随最新的用户默认设置（在 poOrder 里改了默认
+// 站点，重开任务就能看到），被人改过的任务才保留自己那份，互不影响。
 let orderDraftTimer = null;
 watch(
   () => dialogState.order,
   () => {
     const taskId = dialogState.taskId;
-    if (!taskId) {
+    if (!taskId || !orderDiffersFromBase(dialogState.order, orderBase)) {
       return;
     }
     clearTimeout(orderDraftTimer);
     orderDraftTimer = setTimeout(() => {
-      if (dialogState.taskId === taskId) {
-        rememberDraftOrder(taskId, dialogState.order);
+      if (dialogState.taskId === taskId && orderDiffersFromBase(dialogState.order, orderBase)) {
+        rememberDraftOrder(taskId, dialogState.order, orderBase);
       }
     }, DRAFT_DEBOUNCE_MS);
   },
   { deep: true },
 );
+
+// 服务项目（勾选的服务代码）同样按任务存：勾一次落一次，切任务 / 刷新后还原
+let servicesDraftTimer = null;
+watch(
+  () => dialogState.serviceCodes,
+  () => {
+    const taskId = dialogState.taskId;
+    if (!taskId) {
+      return;
+    }
+    clearTimeout(servicesDraftTimer);
+    servicesDraftTimer = setTimeout(() => {
+      if (dialogState.taskId === taskId) {
+        rememberDraftServices(taskId, orderServiceCodes(dialogState.serviceCodes));
+      }
+    }, DRAFT_DEBOUNCE_MS);
+  },
+  { deep: true },
+);
+
+// 当前任务的"默认值基线"（工具条四项按「上传 context > 用户默认设置 > 内置兜底」算出来的值）：
+// 用来判断工具条有没有被人改过 —— 改过才落草稿。null = 还没算出来（此期间不落草稿）
+let orderBase = null;
+
+// 用户默认设置按登录名**短时**缓存。不能缓存整个页面会话：在 poOrder 里改了默认设置后，
+// 页面开着一整天就会一直用旧值（表现为"有时生效有时无效"）。60 秒足够挡掉连续切任务的
+// 重复请求，又能让改动很快生效（后端另有同量级的缓存）
+const USER_DEFAULTS_TTL_MS = 60 * 1000;
+let userDefaultsCache = null;
+
+async function loadUserDefaults(logname) {
+  const name = String(logname || "").trim();
+  if (!name) {
+    // 没有登录名就查不到默认设置（接口按 logname 索引），直接走内置兜底
+    return null;
+  }
+  const cached = userDefaultsCache;
+  if (cached && cached.logname === name && Date.now() - cached.at < USER_DEFAULTS_TTL_MS) {
+    return cached.promise;
+  }
+  const promise = fetchUserDefaults(name).catch(() => {
+    // 拉不到就当"该用户没配默认设置"：工具条退到内置兜底，不打断开单；
+    // 同时清掉缓存，让下一次开任务立刻重试
+    if (userDefaultsCache?.logname === name) {
+      userDefaultsCache = null;
+    }
+    return null;
+  });
+  userDefaultsCache = { logname: name, at: Date.now(), promise };
+  return promise;
+}
+
+/**
+ * 算出当前任务的**默认值基线**并铺进工具条。
+ *
+ * 每次打开任务都重算（用户可能刚在 poOrder 里改了默认设置），算完只存进 orderBase，
+ * **不落草稿** —— 没被人动过的任务因此始终跟随最新默认值；被人工改过的字段由
+ * mergeOrderDelta 叠在基线之上（见 loadTask）。
+ */
+async function applyOrderDefaults(taskId, context) {
+  const userDefaults = await loadUserDefaults(currentUserName());
+  if (dialogState.taskId !== taskId) {
+    return;
+  }
+  orderBase = resolveOrderDefaults({ context: context || {}, userDefaults });
+  for (const [key, value] of Object.entries(orderBase)) {
+    dialogState.order[key] = value;
+  }
+}
+
+/** 把该任务**人工改过**的工具条字段叠到刚算出的基线上（改过的沿用，没改的跟随基线）。 */
+function applySavedOrderDelta(savedOrder) {
+  if (!savedOrder) {
+    return;
+  }
+  const merged = mergeOrderDelta({
+    base: orderBase,
+    savedOrder: savedOrder.order,
+    savedBase: savedOrder.base,
+  });
+  for (const [key, value] of Object.entries(merged)) {
+    dialogState.order[key] = value;
+  }
+}
 
 async function loadTask(taskId) {
   if (loadedTaskIds.has(taskId) && dialogState.taskId === taskId) {
@@ -104,16 +203,22 @@ async function loadTask(taskId) {
   // 订舱编号同样跟着任务走：切任务、刷新页面后仍显示（在弹窗头部的编号位上）；
   // 该任务没提交过就置空，避免把上一个任务的编号带过来
   dialogState.orderCode = loadOrderCode(taskId);
-  // 工具条四项（站点 / 服务方式 / 运输种类 / 订舱操作）也按任务恢复：它们全局只有一份，
-  // 不恢复就会出现「切到别的任务、或刷新页面后，工具条显示的不是这个任务填过的值」。
-  // 该任务从没改过这几项时保持当前值（相当于工作台级的默认），不清成空占位
+  // 工具条（站点 / 服务方式 / 运输种类 / 订舱操作）分两步处理，都在状态接口回来之后：
+  // ① 按「上传 context > 用户默认设置 > 内置兜底」算出**基线**（每次打开都重算，
+  //    所以在 poOrder 里改了默认设置后，没被人动过的任务重开就能跟上）；
+  // ② 把这个任务**人工改过**的字段叠上去（草稿的差分，见 mergeOrderDelta）。
+  // 注意顺序不能反，且基线算出来之前不落草稿（见上方 watcher）
   const savedOrder = loadDraftOrder(taskId);
-  if (savedOrder) {
-    Object.assign(dialogState.order, savedOrder);
-  } else {
-    // 该任务还没存过：把当前这份固化给它。否则它每次都跟着"最后打开过的任务"走，
-    // 看起来仍像是自己变了；固化之后每个任务都有自己那一份，改哪份都不影响别人
-    rememberDraftOrder(taskId, dialogState.order);
+  // 立刻清掉上一个任务的基线：在算出本任务的基线前，任何变化都不该被当成"人工改动"
+  // 存下来（否则会把上一个任务的工具条值钉进这个任务）
+  orderBase = null;
+  // 服务项目（勾选的服务代码）也按任务恢复；没存过的任务回到默认勾选（唯凯配舱）
+  const savedServices = loadDraftServices(taskId);
+  dialogState.serviceCodes = savedServices
+    ? normalizeServiceCodes(savedServices)
+    : [...DEFAULT_SERVICE_CODES];
+  if (!savedServices) {
+    rememberDraftServices(taskId, dialogState.serviceCodes);
   }
   dialogState.loading = true;
   dialogState.error = "";
@@ -122,6 +227,14 @@ async function loadTask(taskId) {
     if (dialogState.taskId !== taskId) {
       return;
     }
+    // ① 基线（含一次「用户默认设置」请求，结果按登录名短时缓存）；上传 context 就在
+    //    status.context 里，所以必须放在状态接口之后
+    await applyOrderDefaults(taskId, status.context);
+    if (dialogState.taskId !== taskId) {
+      return;
+    }
+    // ② 叠加这个任务人工改过的字段（没有草稿就是纯基线）
+    applySavedOrderDelta(savedOrder);
     dialogState.fileName = status.original_name || "";
     dialogState.taskStatus = status.status || "";
     if (status.status === "failed") {
@@ -444,10 +557,13 @@ export const resultDialog = {
         // dom（部门）也在这里带上：poOrder 的列表查询默认按部门过滤，缺了会让新单
         // 在综合查询里查不到；开发期用 ?dom= 传，缺省由后端回落「出口部」
         order: { ...dialogState.order, dom: currentUserDom() },
+        // 服务项目：已勾选的服务代码（含配舱服务、按面板顺序），后端据此生成 serviceList
+        service_codes: normalizeServiceCodes(dialogState.serviceCodes),
         // 当前用户（登录名）= 报文的 czman 与 customerRelList[].addman。生产环境由官网
         // 传入，开发期由 currentUser.js 从 URL 参数 / poOrder 的 Cookie 兜底
         czman: currentUserName(),
-        ticket: currentTicket(),
+        // poOrder 票据不放这里：由 api.js 的 ticketHeaders() 统一放进 Authorization
+        // 请求头（不进 URL、不进请求体），后端 current_ticket 依赖同口径读取
       });
       if (!outcome.ok) {
         // 接口给出的原因原样带出去（缺操作人 / 客户信控 / 后端异常）

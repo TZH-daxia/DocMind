@@ -100,6 +100,13 @@ class Settings(BaseSettings):
     order_submit_enabled: bool = Field(
         default=False, validation_alias="DOCMIND_ORDER_SUBMIT_ENABLED"
     )
+    # 是否允许从 URL 查询参数 `?ticket=` 读 poOrder 票据。**默认关闭**：票据是登录
+    # 凭据，放进 URL 会跟着进浏览器历史、`Referer` 与网关访问日志；正常通道是请求头
+    # （见 app/api/dependencies.py 的 current_ticket）。开发期同机调试时跨端口读不到
+    # poOrder 的 storage，只能在 .env 里打开这一项用 `?ticket=` 兜底
+    allow_url_ticket: bool = Field(
+        default=False, validation_alias="DOCMIND_ALLOW_URL_TICKET"
+    )
     # 委托项目主数据接口（poOrder PublicWebApi /api/PubCustom）根地址；
     # 与港口/客户主数据是同一个服务，留空时回退 port_api_base，都为空则停用项目候选
     project_api_base: str = Field(
@@ -109,6 +116,21 @@ class Settings(BaseSettings):
     # 且项目主数据变更后会主动刷新，说明这份数据变更比客户表频繁
     project_cache_ttl_hours: float = Field(
         default=12.0, validation_alias="DOCMIND_PROJECT_CACHE_TTL_HOURS"
+    )
+    # 用户设置模板接口（poOrder PublicWebApi /api/UserTemplet）根地址：订单新增页的
+    # 默认站点/运输种类/服务方式就存在该接口的 `type=110` 记录里。与港口/客户/站点
+    # 主数据同源，留空时回退 port_api_base，都为空则停用「用户默认设置」
+    user_templet_api_base: str = Field(
+        default="", validation_alias="DOCMIND_USER_TEMPLET_API_BASE"
+    )
+    # 用户默认设置的内存缓存有效期（分钟）：接口一次返回该用户的全部模板（实测 ~660KB），
+    # 缓存能挡掉连续切任务的重复请求。但**别调太长**：在 poOrder 里改了默认站点后，
+    # 缓存期内所有任务仍然拿旧值，表现为"有时生效有时无效"。默认 1 分钟：既够挡抖动，
+    # 又几乎察觉不到延迟；0 表示不缓存
+    user_defaults_cache_ttl_minutes: float = Field(
+        default=1.0,
+        ge=0.0,
+        validation_alias="DOCMIND_USER_DEFAULTS_CACHE_TTL_MINUTES",
     )
     # 单文件大小上限：托书均为单页文档，50MB 已足够宽松；注意校验发生在
     # 上传内容读入内存之后，调大会同时放大单次请求的内存占用
