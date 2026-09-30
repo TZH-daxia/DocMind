@@ -22,6 +22,9 @@ export const ResultDialog = {
       state: dialogState,
       // 服务项目面板是否打开：只影响这一处，留在组件本地，不进全局 state
       servicePanelOpen: false,
+      // 左侧原件图片是否都已加载完（DocumentPreview 上报）。遮罩要等它也到位，
+      // 否则会先露出半张图、剩下的再一张张蹦出来
+      previewSettled: true,
     };
   },
   computed: {
@@ -29,7 +32,9 @@ export const ResultDialog = {
       return buildFieldRows(dialogState.form, dialogState.fieldStatus);
     },
     formDisabled() {
-      return Boolean(dialogState.error);
+      // 加载中（首次打开 / 切任务）表单还是空的，一并禁用：
+      // 否则这时候点提交，必然白报一次"必填缺失"
+      return Boolean(dialogState.error) || dialogState.loading;
     },
     // 工具条按钮右上角的已选数量：只算操作员主动勾的服务（不含配舱服务）
     pickedServiceCount() {
@@ -65,6 +70,15 @@ export const ResultDialog = {
           this.focusRow(outcome.firstError);
           return;
         }
+        // 字段格式 / 范围不合法：行内已显示原因，这里把第一条原因原文提示出来
+        const invalidReason = Object.values(outcome.errors).find(
+          (value) => typeof value === "string",
+        );
+        if (invalidReason) {
+          notify(invalidReason, "error");
+          this.focusRow(outcome.firstError);
+          return;
+        }
         const missing = REQUIRED_FIELDS.filter((key) => outcome.errors[key]);
         notify(
           missing.length > 3
@@ -79,8 +93,11 @@ export const ResultDialog = {
       // 这里只提示，不自动收起弹窗——方便立刻看到编号与页签变绿，也便于继续核对其他文件。
       // 文案按需求文档的返回格式『新增成功，订舱编号BOAE…』：poOrder 原文里还夹着
       // 信控提示，那段信息已经在「委托客户」下方单独展示，不重复塞进这条提示
+      // duplicated = 幂等键命中了上一次的结果（重试回放）：这票订单其实早就建好了，
+      // 措辞上要说清是"此前已提交"，避免让人误以为是又下了一单
+      const head = outcome.duplicated ? "该单此前已提交成功" : "新增成功";
       notify(
-        outcome.orderCode ? `新增成功，订舱编号${outcome.orderCode}` : "新增成功",
+        outcome.orderCode ? `${head}，订舱编号${outcome.orderCode}` : head,
         "success",
       );
     },
@@ -137,6 +154,7 @@ export const ResultDialog = {
             :highlight-boxes="state.highlightBoxes"
             :highlight-status="state.highlightStatus"
             :highlight-key="state.focusedLocationKey"
+            @settled="previewSettled = $event"
           />
           <FieldFormPanel
             :rows="fields"
@@ -157,6 +175,17 @@ export const ResultDialog = {
             @field-focus="onFieldFocus"
             @select-services="onSelectServices"
           />
+          <!-- 切任务 / 首次加载期间把两栏一起盖住，等数据到位再露出：避免频繁切换时
+               看到上一个任务的内容，也避免"空表单 → 有内容"的布局跳变 -->
+          <div
+            v-if="state.loading || !previewSettled"
+            class="doc-dialog-loading"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="doc-dialog-loading-spinner" aria-hidden="true"></span>
+            <span class="doc-dialog-loading-text">正在加载分析结果…</span>
+          </div>
         </div>
         <!-- 提交移到弹窗底部（具体位置待设计确认，先靠右） -->
         <footer class="doc-dialog-foot">

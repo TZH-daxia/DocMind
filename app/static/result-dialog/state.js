@@ -28,6 +28,12 @@ export const dialogState = reactive({
   highlightStatus: "",
   fieldStatus: {},
   errors: {},
+  // 组合框（委托客户 fid / 始发港 sfg / 目的港 mdg）的确认状态：
+  // field key → "confirmed" / "unconfirmed" / "degraded" / "empty"（见 SearchCombobox.js
+  // 的 comboStatus）。提交校验据此要求：主数据可用时这三个字段必须是「下拉选中的值」，
+  // 未确认的手输、或对不上主数据的原文一律拦下；只有主数据不可用（degraded）时，
+  // 「退化为手工填写」才是允许的（未配置主数据的环境本来就只能手输）
+  fieldSelections: {},
   // 站点字典候选（工具条「委托唯凯站点」下拉的分组数据）：进程级参考数据，
   // 与任务无关，因此不在 resetDialogContent 里清空；用 siteGroupsLoaded
   // 区分「还没拉」和「拉过但字典未接入（groups 为空）」，避免反复请求
@@ -73,6 +79,7 @@ export function resetDialogContent() {
   dialogState.highlightStatus = "";
   dialogState.fieldStatus = {};
   dialogState.errors = {};
+  dialogState.fieldSelections = {};
   // 与初始值保持一致：四项回到内置兜底（打开下一个任务时由 loadTask 重算）
   dialogState.order = {
     code: "",

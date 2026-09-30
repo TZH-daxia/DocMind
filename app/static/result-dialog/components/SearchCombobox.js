@@ -32,7 +32,7 @@ export const SearchCombobox = {
     // 已提交：只读（不可输入、不可改选，但仍可聚焦核对原文）
     locked: { type: Boolean, default: false },
   },
-  emits: ["update:modelValue", "focus"],
+  emits: ["update:modelValue", "focus", "status"],
   data() {
     return {
       // 输入框当前文本：选中后是回显文案（客户名 / 三字码），输入过程中是搜索词
@@ -59,11 +59,22 @@ export const SearchCombobox = {
   },
   mounted() {
     this.syncFromValue(this.modelValue);
+    // 保险：mounted 时父级已完成首次渲染，再上报一次确认状态，确保父组件拿到的是
+    // 确定值（immediate watch 已上报过一次，这里是双保险，代价极小）
+    this.$emit("status", this.comboStatus);
   },
   beforeUnmount() {
     clearTimeout(this.timer);
   },
   watch: {
+    // 确认状态一变就上报（immediate：父组件一挂载就有确定状态，提交校验读到的
+    // 不会是"说不清"的中间值）
+    comboStatus: {
+      immediate: true,
+      handler(value) {
+        this.$emit("status", value);
+      },
+    },
     modelValue(value) {
       // 只忽略"本组件自己发出去的值"回灌（lastEmitted 为 null 表示尚未发过）
       if (this.lastEmitted !== null && String(value ?? "") === this.lastEmitted) {
@@ -93,6 +104,23 @@ export const SearchCombobox = {
     // 用于给出"待确认"的边框提示
     needsPick() {
       return !this.degraded && Boolean(this.keyword.trim()) && !this.selected;
+    },
+    // 值的确认状态：emit 给父组件（写进 dialogState.fieldSelections），供提交校验用
+    // - confirmed：值是下拉选中（或载入值反查命中主数据）产生的，可提交
+    // - unconfirmed：主数据可用，但框里是未选中的手输、或对不上主数据的原文，不可提交
+    // - degraded：主数据不可用，已退化为手工填写，此时只能手输，允许提交
+    // - empty：没有值（由必填校验处理）
+    comboStatus() {
+      if (this.degraded) {
+        return "degraded";
+      }
+      if (this.selected) {
+        return "confirmed";
+      }
+      if (String(this.keyword ?? "").trim()) {
+        return "unconfirmed";
+      }
+      return "empty";
     },
     // 全部提示只挂在 title 上：不占版面，也不会改变输入框/行高
     inputHint() {

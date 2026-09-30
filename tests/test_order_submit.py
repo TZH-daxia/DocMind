@@ -1,13 +1,18 @@
-"""提交订单：报文组装逐字段断言 + 结果解析 + 缺操作人/调用失败的降级。"""
+"""提交订单：报文组装逐字段断言 + 结果解析 + 缺操作人/调用失败的降级 + 幂等去重。"""
 
+import asyncio
 from pathlib import Path
 
 from app.config import Settings
 from app.service.order_submit_service import (
+    SUBMIT_CREATED,
+    SUBMIT_REJECTED,
+    SUBMIT_UNCERTAIN,
     OrderSubmitService,
     build_submit_payload,
     compute_system,
     parse_submit_result,
+    validate_numeric_fields,
 )
 
 
@@ -248,8 +253,8 @@ def test_contact_uses_form_values_when_present() -> None:
 
 
 def test_parse_submit_result() -> None:
-    # 实测形态一：创建成功、有待办（信控受限），文案里有编号
-    ok, code, message = parse_submit_result(
+    # 实测形态一：创建成功、有待办（信控受限），编号在 resultno
+    status, code, message = parse_submit_result(
         {
             "resultstatus": 9999,
             "resultmessage": (
@@ -259,53 +264,117 @@ def test_parse_submit_result() -> None:
             "resultno": "BOAE2609240001PVG",
         }
     )
-    assert ok is True
+    assert status == SUBMIT_CREATED
     assert code == "BOAE2609240001PVG"
     assert "订单创建成功并锁定" in message
 
     # 实测形态二：创建成功、文案里根本没有编号，只能从 resultno 取
-    ok, code, message = parse_submit_result(
+    status, code, message = parse_submit_result(
         {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE2609240005PVG"}
     )
-    assert ok is True
+    assert status == SUBMIT_CREATED
     assert code == "BOAE2609240005PVG"
     assert message == "新增成功"
 
-    # 实测形态三：业务校验不通过，不能算成功、也不能误取编号
-    ok, code, message = parse_submit_result(
+    # 实测形态三：业务校验不通过 —— 明确被拒，确定没建单
+    status, code, message = parse_submit_result(
         {"resultstatus": 1, "resultmessage": "航班日期不能小于创建日期", "resultno": None}
     )
-    assert ok is False
+    assert status == SUBMIT_REJECTED
     assert code == ""
     assert message == "航班日期不能小于创建日期"
 
-    # 文档示例的措辞同样要认
-    ok, code, _ = parse_submit_result(
+    # 编号只写在文案里（resultno 缺失）：提取到同样算已建单
+    status, code, _ = parse_submit_result(
         {"resultstatus": 0, "resultmessage": "新增成功，订舱编号BOAE202601010001"}
     )
-    assert ok is True
+    assert status == SUBMIT_CREATED
     assert code == "BOAE202601010001"
 
-    # resultstatus 不是 0，但文案明确说创建成功：仍算成功（否则会漏掉已建的单）
-    ok, code, _ = parse_submit_result(
+    # resultstatus 不是 0，但文案明确说创建成功、且带编号：算已建单
+    status, code, _ = parse_submit_result(
         {"resultstatus": 999, "resultmessage": "订单创建成功并锁定,订单编号为:BOAE2609240009PVG"}
     )
-    assert ok is True
+    assert status == SUBMIT_CREATED
     assert code == "BOAE2609240009PVG"
 
-    # 纯提示、没有建单的返回（如信控拦截）：失败，且不误取编号
-    ok, code, message = parse_submit_result(
+    # 纯提示、没有建单的返回（如信控拦截）：明确被拒
+    status, code, message = parse_submit_result(
         {"resultstatus": 999, "resultmessage": "该客户是C类客户,需付款买单才能继续操作"}
     )
-    assert ok is False
+    assert status == SUBMIT_REJECTED
     assert code == ""
     assert message == "该客户是C类客户,需付款买单才能继续操作"
 
-    # resultstatus 是字符串 "0" 也算成功
-    assert parse_submit_result({"resultstatus": "0", "resultmessage": "新增成功"})[0] is True
-    # 成功但文案里没有编号：不报错，编号留空
-    assert parse_submit_result({"resultstatus": 0, "resultmessage": "新增成功，订舱编号：BOAE1"})[1] == ""
-    assert parse_submit_result(None) == (False, "", "")
+    # 关键：说成功却拿不到编号 → 既不能报成功（万一没建单就是漏单），
+    # 也不能当"被拒"（前端会换新键重试，万一已建单就重复建单）
+    for payload in (
+        {"resultstatus": 0, "resultmessage": "新增成功"},
+        {"resultstatus": "0", "resultmessage": "新增成功"},
+        # 文案里的编号不完整（BOAE1 不足 6 位流水），提取不到
+        {"resultstatus": 0, "resultmessage": "新增成功，订舱编号：BOAE1"},
+    ):
+        status, code, _ = parse_submit_result(payload)
+        assert status == SUBMIT_UNCERTAIN
+        assert code == ""
+
+    # 响应不是对象（形态异常）：定性不了
+    assert parse_submit_result(None) == (SUBMIT_UNCERTAIN, "", "")
+    assert parse_submit_result([]) == (SUBMIT_UNCERTAIN, "", "")
+
+
+def test_validate_numeric_fields() -> None:
+    """数值字段必须是正数：0、负号、科学计数、小数当整数、超长小数都拦下。"""
+
+    ok_form = {**FORM, "inwageallinprice": "168.5"}
+    assert validate_numeric_fields(ok_form) == ""
+    # 空值不在这里判（必填缺失另由前端校验与 poOrder 兜底）
+    assert validate_numeric_fields({**ok_form, "ybpiece": ""}) == ""
+    # 0 与 0.00 一样无意义，必须拦下；正的小数照常通过
+    assert "单价" in validate_numeric_fields({**ok_form, "inwageallinprice": "0"})
+    assert "毛重" in validate_numeric_fields({**ok_form, "ybweight": "0"})
+    assert "体积" in validate_numeric_fields({**ok_form, "ybvolume": "0.00"})
+    assert validate_numeric_fields({**ok_form, "ybweight": "0.5"}) == ""
+
+    # 件数：必须是正整数
+    assert validate_numeric_fields({**ok_form, "ybpiece": "1"}) == ""
+    assert "件数" in validate_numeric_fields({**ok_form, "ybpiece": "0"})
+    assert "件数" in validate_numeric_fields({**ok_form, "ybpiece": "1.5"})
+    assert "件数" in validate_numeric_fields({**ok_form, "ybpiece": "-3"})
+    # 毛重 / 体积 / 单价：负数、科学计数、非数字都拦
+    assert "毛重" in validate_numeric_fields({**ok_form, "ybweight": "-1"})
+    assert "体积" in validate_numeric_fields({**ok_form, "ybvolume": "1e3"})
+    assert "单价" in validate_numeric_fields({**ok_form, "inwageallinprice": "abc"})
+    assert "单价" in validate_numeric_fields({**ok_form, "inwageallinprice": "12."})
+    assert "单价" in validate_numeric_fields(
+        {**ok_form, "inwageallinprice": "1.2345678"}
+    )
+
+
+async def test_submit_rejects_invalid_numeric_field(tmp_path: Path) -> None:
+    """报文体里的数值不合法：拦在调 poOrder 之前，且不占用幂等键。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(
+        {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE2609240001PVG"}
+    )
+    service.collector = collector
+
+    rejected = await service.submit(
+        {**FORM, "ybpiece": "-3"}, ORDER, "zhangsan", request_id="req-n"
+    )
+
+    assert rejected.ok is False
+    assert "件数" in rejected.message
+    assert rejected.retryable is True
+    assert collector.calls == []  # 没打 poOrder
+
+    # 改对之后用同一把键仍能正常下单（说明拦截没占住幂等键）
+    ok = await service.submit(
+        {**FORM, "ybpiece": "3"}, ORDER, "zhangsan", request_id="req-n"
+    )
+    assert ok.ok is True and ok.duplicated is False
+    assert len(collector.calls) == 1
 
 
 def build_service(tmp_path: Path) -> OrderSubmitService:
@@ -383,6 +452,150 @@ async def test_submit_call_failure(tmp_path: Path) -> None:
 
     assert outcome.ok is False
     assert outcome.message
+
+
+async def test_submit_replays_result_for_same_request_id(tmp_path: Path) -> None:
+    """同一把幂等键重试：只调一次 poOrder，第二次回放同一个编号。
+
+    这正是「提交超时但其实已建单、用户重试」时防止重复建单的关键。
+    """
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(
+        {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE2609240001PVG"}
+    )
+    service.collector = collector
+
+    first = await service.submit(FORM, ORDER, "zhangsan", request_id="req-1")
+    second = await service.submit(FORM, ORDER, "zhangsan", request_id="req-1")
+
+    assert len(collector.calls) == 1  # 关键：重试没有再打 poOrder
+    assert first.ok is True and first.duplicated is False
+    assert second.ok is True and second.duplicated is True
+    assert second.order_code == "BOAE2609240001PVG"
+
+
+async def test_submit_uncertain_result_keeps_retrying_safely(tmp_path: Path) -> None:
+    """说成功却拿不到编号：既不报成功（防漏单），也不换键重试（防重复建单）。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector({"resultstatus": 0, "resultmessage": "新增成功"})
+    service.collector = collector
+
+    first = await service.submit(FORM, ORDER, "zhangsan", request_id="req-u")
+    second = await service.submit(FORM, ORDER, "zhangsan", request_id="req-u")
+
+    assert first.ok is False  # 没拿到编号就不报成功
+    assert first.order_code == ""
+    assert "不确定" in first.message
+    assert first.retryable is False  # 保留幂等键：重试不算新的一单
+    assert second.duplicated is True
+    assert len(collector.calls) == 1  # 关键：重试没有再打 poOrder
+
+
+async def test_submit_different_request_ids_are_separate_orders(tmp_path: Path) -> None:
+    """换了一把键就是新的一单：不能不必要地拦掉正常提交。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(
+        {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE1"}
+    )
+    service.collector = collector
+
+    await service.submit(FORM, ORDER, "zhangsan", request_id="req-a")
+    await service.submit(FORM, ORDER, "zhangsan", request_id="req-b")
+
+    assert len(collector.calls) == 2
+
+
+async def test_submit_without_request_id_stays_non_idempotent(tmp_path: Path) -> None:
+    """不带幂等键（旧调用方）：行为与改动前一致，不去重。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(
+        {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE1"}
+    )
+    service.collector = collector
+
+    await service.submit(FORM, ORDER, "zhangsan")
+    await service.submit(FORM, ORDER, "zhangsan")
+
+    assert len(collector.calls) == 2
+
+
+async def test_submit_unknown_result_is_not_retried_with_same_key(
+    tmp_path: Path,
+) -> None:
+    """超时/异常时结果未知：同一把键的重试只回放提示，不会真的再发一次单。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(error=RuntimeError("timeout"))
+    service.collector = collector
+
+    first = await service.submit(FORM, ORDER, "zhangsan", request_id="req-x")
+    second = await service.submit(FORM, ORDER, "zhangsan", request_id="req-x")
+
+    assert first.ok is False
+    # 结果未知，不能标成"已有定论"，前端据此保留同一把键继续重试
+    assert first.retryable is False
+    assert second.duplicated is True
+    assert len(collector.calls) == 1  # 关键：重试没有再打 poOrder
+
+
+async def test_submit_preflight_rejection_keeps_key_usable(tmp_path: Path) -> None:
+    """缺操作人这类"还没碰 poOrder"的拦截不落幂等记录：补齐后用同一把键仍能真正下单。"""
+
+    service = build_service(tmp_path)
+    collector = FakeSubmitCollector(
+        {"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE1"}
+    )
+    service.collector = collector
+
+    rejected = await service.submit(FORM, ORDER, "  ", request_id="req-y")
+    assert rejected.ok is False and rejected.retryable is True
+    assert collector.calls == []
+
+    ok = await service.submit(FORM, ORDER, "zhangsan", request_id="req-y")
+    assert ok.ok is True and ok.duplicated is False
+    assert len(collector.calls) == 1
+
+
+async def test_submit_blocks_concurrent_duplicate(tmp_path: Path) -> None:
+    """同键并发：首次未返回时第二发被拦为"提交中"，全程只下一次单。"""
+
+    service = build_service(tmp_path)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowCollector:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def submit_order(self, payload, ticket=""):
+            self.calls += 1
+            started.set()
+            await release.wait()
+            return {
+                "resultstatus": 0,
+                "resultmessage": "新增成功",
+                "resultno": "BOAE2609240001PVG",
+            }
+
+    collector = SlowCollector()
+    service.collector = collector
+
+    first = asyncio.create_task(
+        service.submit(FORM, ORDER, "zhangsan", request_id="req-z")
+    )
+    await started.wait()
+    concurrent = await service.submit(FORM, ORDER, "zhangsan", request_id="req-z")
+
+    assert concurrent.ok is False
+    assert "提交中" in concurrent.message
+
+    release.set()
+    assert (await first).ok is True
+    assert collector.calls == 1
 
 
 def test_management_api_base_derivation(tmp_path: Path) -> None:

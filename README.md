@@ -73,10 +73,17 @@ build_result           港口归一化为三字码；发货人/收货人剔除�
   定位不到时标注「未定位」）；
 - **输入即下拉**：委托客户 / 始发港 / 目的港的候选来自主数据缓存。手输内容**只用于搜索、
   不会写入表单值**，值必须由下拉选中产生，未选中就离开输入框会自动清空；若载入值在主
-  数据中匹配不到，输入框以琥珀色边框提示待确认，但与原文的对应关系不会丢；
-- **提交前校验只在本地**：校验 8 个必填项、日期格式（真实日历校验）与派生的「预计运费
-  总额」，不做远程校验；
-- **真实提交由调用方接入**：本服务只负责产出结构化结果，不代提交。
+  数据中匹配不到，输入框以琥珀色边框提示待确认，但与原文的对应关系不会丢（这类未确认的
+  值提交时会被拦下，须重新从候选里选）；
+- **提交前校验**：前端校验必填项、日期格式（真实日历校验）、数值字段（件数 / 毛重 / 体积 /
+  运费单价都必须是正数，件数为正整数，拒绝 0、负号与科学计数、限小数位）与派生的「预计
+  运费总额」；委托客户 / 始发港 / 目的港在**主数据可用时还必须是下拉选中的值**（手输未选、
+  或抽取值对不上主数据一律拦下），只有主数据不可用、组合框已退化为手工填写时才放行；
+  后端在调 poOrder 之前对同一批数值字段再兜一道——接口可被直调，不能只信前端；
+- **提交幂等与结果判定**：提交带 `request_id` 幂等键，超时重试回放首次结果、不会重复建单。
+  后端只用**订单编号**作为「已建单」的硬证据（编号在 `resultno`，或写在提示文案里）：
+  拿不到编号的「说成功」响应一律按**结果不确定**处理（`retryable=false`）——既不误报成功
+  （防漏单），也不让前端换键重试（防重复建单），而是提示操作员到 poOrder 核对。
 
 ## 输出字段
 
@@ -155,7 +162,13 @@ LibreOffice 只处理 doc/docx/xls/xlsx（单页约 5~15s），PDF 走 PyMuPDF �
 | `POST` | `/docmind/analysis/tasks` | 上传托书创建任务（multipart，默认自动开始分析；`request_id` 幂等） |
 | `GET` | `/docmind/analysis/files` | 任务文件列表 |
 | `GET` | `/docmind/analysis/customers?keyword=` | 委托客户候选搜索（`enabled=false` 表示未配置主数据） |
+| `GET` | `/docmind/analysis/credit?fid=&area=&system=` | 委托客户的信用等级与信控提示 |
+| `POST` | `/docmind/analysis/submit` | 提交订单（后端组装报文后调 poOrder；`request_id` 幂等，超时重试不会重复建单） |
 | `GET` | `/docmind/analysis/ports?keyword=` | 港口候选搜索（三字码 / 英文名） |
+| `GET` | `/docmind/analysis/projects?fid=&keyword=` | 按委托客户列出项目候选 |
+| `GET` | `/docmind/analysis/contacts?fid=&area=&system=` | 本票客户客服联系人候选 |
+| `GET` | `/docmind/analysis/sites` | 唯凯站点字典（按分组） |
+| `GET` | `/docmind/analysis/user-defaults?logname=` | 该登录名在 poOrder 的订单新增默认设置 |
 | `GET` | `/docmind/analysis/tasks/{id}` | 任务状态与进度 |
 | `GET` | `/docmind/analysis/tasks/{id}/events` | SSE 实时节点事件（含历史回放，任务结束后自动关闭） |
 | `GET` | `/docmind/analysis/tasks/{id}/events/history` | 已落盘的全部节点事件（回看已完成任务） |

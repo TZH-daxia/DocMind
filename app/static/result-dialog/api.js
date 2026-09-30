@@ -86,9 +86,10 @@ export async function submitOrder(body) {
  * poOrder 票据统一走**请求头**，不放 URL：地址栏里的 ticket 会跟着进浏览器历史、
  * `Referer` 与网关访问日志，等于把登录凭据写进日志。
  *
- * 开发期跨端口调试读不到 poOrder 的 storage，仍可用 `?ticket=` 兜底 —— 读取顺序在
- * `currentUser.js`（URL 参数优先，其次 Cookie），认不认 URL 里那个由后端
- * `DOCMIND_ALLOW_URL_TICKET` 决定（默认关闭）。
+ * 票据的来源见 `currentUser.js` 的 `currentTicket()`：内置 demo 前端只能从 URL 参数
+ * `?ticket=` 取（跨端口读不到 poOrder 的 storage），认不认 URL 里那个由后端
+ * `DOCMIND_ALLOW_URL_TICKET` 决定（默认关闭）。生产环境由调用方（官网客服面板）
+ * 自带 `Authorization` 请求头，不走这里。
  */
 function ticketHeaders() {
   const ticket = currentTicket();

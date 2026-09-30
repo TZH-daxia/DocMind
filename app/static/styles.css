@@ -1025,6 +1025,51 @@ select:focus {
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* 加载遮罩（.doc-dialog-loading）的定位参照 */
+  position: relative;
+}
+
+/* 切任务 / 首次加载期间的内容遮罩：把左右两栏一起盖住，等数据到位再露出 ——
+   频繁切换时既不会看到上一个任务的内容，也不会被"空表单 → 有内容"的布局跳变晃到。
+   底色取 --canvas 的浅灰略加透明度：既压住底下的旧内容，又保留一点层次感。
+   它是绝对定位，不参与上面的 grid 两列布局 */
+.doc-dialog-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(238, 242, 244, 0.92);
+  backdrop-filter: blur(2px);
+  /* 只做一次很短的淡入，让"出现"柔和一点：不设延迟、也不拖时长 ——
+     遮罩显示多久完全跟实际加载时间走，没改动过的任务秒开就一闪即过 */
+  animation: docDialogLoadingIn 0.14s ease-out;
+  /* 遮罩自己挡住鼠标：加载期间不给点到下面的空表单 */
+  pointer-events: auto;
+}
+
+.doc-dialog-loading-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(59, 133, 251, 0.18);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  /* 与提交按钮里的转圈共用同一套动画（见 .doc-dialog-spinner） */
+  animation: docDialogSpin 0.8s linear infinite;
+}
+
+.doc-dialog-loading-text {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@keyframes docDialogLoadingIn {
+  from {
+    opacity: 0;
+  }
 }
 
 .doc-dialog-preview,

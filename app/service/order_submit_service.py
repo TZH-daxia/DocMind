@@ -32,6 +32,12 @@ FIXED_SERVICE_CODE = "OA0010"
 # compute_system 的「国内服务」退化值：该业务不带 OA0010（见 build_submit_payload）
 HOME_SYSTEM = "国内服务"
 
+# 幂等键（request_id）记录的保留时长。这期间带同一个键的请求一律回放首次结果，
+# 不再调用 poOrder —— 解决「提交请求超时但 poOrder 其实已建单、用户重试后重复建单」。
+# 记录只在**本进程内存**里，配合 README 的部署约定（单副本、单 uvicorn worker）即可
+# 全局生效；服务重启会清空，那时若有在途重试可能重复建单，属已知取舍。
+SUBMIT_IDEMPOTENCY_TTL_SECONDS = 3600.0
+
 
 def text_of(value: Any) -> str:
     """表单值转报文值：None → 空串，其余去掉首尾空白。"""
@@ -227,40 +233,97 @@ def build_submit_payload(
     }
 
 
+# 数值字段的报文体契约（与前端 result-dialog/fields.js 同口径）：
+# 只认正的普通十进制写法，拒绝 0、负号、正号、科学计数（1e3）、千分位等；
+# 整数控件（件数）不接受小数。前端已有同样规则的本地校验，这里再拦一道——
+# 接口是直调的，不能只信前端。
+NUMERIC_FIELD_RULES: dict[str, tuple[str, str]] = {
+    # 字段 →（控件类型, 中文名，用于报错文案）
+    "ybpiece": ("integer", "件数"),
+    "ybweight": ("number", "实际毛重"),
+    "ybvolume": ("number", "总体积"),
+    "inwageallinprice": ("number", "预计运费单价"),
+}
+NUMERIC_PATTERN = re.compile(r"^(?:\d+(?:\.\d*)?|\.\d+)$")
+INTEGER_PATTERN = re.compile(r"^\d+$")
+MAX_DECIMAL_PLACES = 6
+
+
+def validate_numeric_fields(form: dict[str, Any]) -> str:
+    """校验报文里的数值字段；通过返回空串，否则返回给操作员看的原因。
+
+    空值不在这里判（必填缺失由前端校验与 poOrder 兜底），只盯「填了但不合法」。
+    件数 / 毛重 / 体积 / 运费单价都必须是正数：0 与负数一样无意义，一律拦下。
+    """
+
+    for key, (control, label) in NUMERIC_FIELD_RULES.items():
+        text = text_of(form.get(key))
+        if not text:
+            continue
+        if control == "integer":
+            if not INTEGER_PATTERN.match(text) or int(text) <= 0:
+                return f"「{label}」必须是大于 0 的整数"
+            continue
+        # "12." 是输入中间态、不是完整数字：与前端一致按非法处理
+        if not NUMERIC_PATTERN.match(text) or text.endswith("."):
+            return f"「{label}」必须是大于 0 的数字（不接受负号、科学计数等写法）"
+        decimals = text.split(".", 1)[1] if "." in text else ""
+        if len(decimals) > MAX_DECIMAL_PLACES:
+            return f"「{label}」小数位不能超过 {MAX_DECIMAL_PLACES} 位"
+        if float(text) <= 0:
+            return f"「{label}」必须大于 0"
+    return ""
+
+
 # 订单编号形如 BOAE2609240001PVG / BOAE202601010001：前缀 + 日期 + 流水 + 始发港
 ORDER_CODE_PATTERN = re.compile(r"[A-Z]{2,}[0-9]{6,}[A-Z]*")
 
+# 提交结果的三态判定。**不能只分成功/失败**：poOrder 会返回"说成功却没给编号"这种
+# 定性不了的形态，把它强行归到任何一边都要付代价（见 parse_submit_result 的说明）。
+SUBMIT_CREATED = "created"      # 已建单（拿到了订单编号）
+SUBMIT_REJECTED = "rejected"    # 明确被拒，确定没有建单
+SUBMIT_UNCERTAIN = "uncertain"  # 拿不到编号也定不了性：保守处理，不许换键重试
 
-def parse_submit_result(payload: Any) -> tuple[bool, str, str]:
-    """解析提交结果 →（是否成功, 订单编号, 提示文案）。
 
-    实测（见 logs/app.log）poOrder 的返回有几种形态，**订单编号都在 `resultno` 里**：
+def parse_submit_result(payload: Any) -> tuple[str, str, str]:
+    """解析提交结果 →（判定, 订单编号, 提示文案）。
+
+    判定取 `SUBMIT_CREATED` / `SUBMIT_REJECTED` / `SUBMIT_UNCERTAIN` 之一。
+
+    **订单编号（`resultno`）是"已建单"的唯一硬证据**：只有拿到编号才算成功。
+    「说成功却给不出编号」一律归为 `SUBMIT_UNCERTAIN`，因为两种误判的代价都比
+    "让操作员去 poOrder 核对一下"高：
+
+    - 当成功报出去：万一实际没建单，用户以为建好了、按钮还置灰 —— 直接漏单；
+    - 当失败报出去：前端会换一把新的幂等键重试，万一实际已建单 —— 重复建单。
+
+    实测（见 logs/app.log）poOrder 的返回形态：
 
     - 创建成功、有待办：`{"resultstatus": 9999, "resultmessage": "订单创建成功并锁定,…订单编号为:BOAE…", "resultno": "BOAE…"}`
     - 创建成功、无待办：`{"resultstatus": 0, "resultmessage": "新增成功", "resultno": "BOAE…"}`
       —— 这种文案里**根本没有编号**，只能从 `resultno` 取（曾因此编号取不到）
     - 业务校验不通过：`{"resultstatus": 1, "resultmessage": "航班日期不能小于创建日期"}`
-
-    所以：编号优先读 `resultno`；成功判定为「有编号 / resultstatus == 0 / 文案含
-    「创建成功」「新增成功」」；文案里的编号只作最后兜底（措辞前后换过几版）。
     """
 
     if not isinstance(payload, dict):
-        return False, "", ""
+        # 响应不是对象（形态异常）：定性不了，按"不确定"处理
+        return SUBMIT_UNCERTAIN, "", ""
     message = text_of(payload.get("resultmessage"))
     result_no = text_of(payload.get("resultno"))
-    ok = (
-        bool(result_no)
-        or str(payload.get("resultstatus")) == "0"
+    if result_no:
+        return SUBMIT_CREATED, result_no, message
+    # 编号也可能只写在文案里（措辞前后换过几版）：能提取到就算拿到了编号
+    match = ORDER_CODE_PATTERN.search(message)
+    if match:
+        return SUBMIT_CREATED, match.group(0), message
+    if (
+        str(payload.get("resultstatus")) == "0"
         or "创建成功" in message
         or "新增成功" in message
-    )
-    order_code = result_no if ok else ""
-    if ok and not order_code:
-        match = ORDER_CODE_PATTERN.search(message)
-        if match:
-            order_code = match.group(0)
-    return ok, order_code, message
+    ):
+        # 有"成功"的迹象却没有编号：定性不了，交人工核对
+        return SUBMIT_UNCERTAIN, "", message
+    return SUBMIT_REJECTED, "", message
 
 
 def management_api_base(settings: Settings) -> str:
@@ -286,12 +349,51 @@ class OrderSubmitService:
         self.collector = OrderSubmitCollector(api_base) if api_base else None
         # 真实下单开关：默认关闭，哪个环境要下单就在该环境的 .env 里显式打开
         self.submit_enabled = settings.order_submit_enabled
+        # 幂等键 →（结果, 记录时刻）。结果为 None 表示"正在提交中"（占位，用来拦并发）。
+        # 只在本进程内存里：见 SUBMIT_IDEMPOTENCY_TTL_SECONDS 的说明。
+        self._attempts: dict[str, tuple[OrderSubmitOutcome | None, float]] = {}
 
     @property
     def enabled(self) -> bool:
         """接口已配置且允许真实下单时才可用。"""
 
         return self.collector is not None and self.submit_enabled
+
+    def _prune_attempts(self) -> None:
+        """清掉超过 TTL 的幂等记录，避免服务长期运行后内存只增不减。"""
+
+        if not self._attempts:
+            return
+        deadline = time.monotonic() - SUBMIT_IDEMPOTENCY_TTL_SECONDS
+        for key in [k for k, (_, ts) in self._attempts.items() if ts < deadline]:
+            del self._attempts[key]
+
+    def _recall_attempt(self, key: str) -> OrderSubmitOutcome | None:
+        """回放同一幂等键的已有结果；该键从没出现过则返回 None。"""
+
+        self._prune_attempts()
+        record = self._attempts.get(key)
+        if record is None:
+            return None
+        outcome, _ = record
+        if outcome is None:
+            # 上一次还没回来：拦下并发重试，避免同一单被同时发两次
+            return OrderSubmitOutcome(
+                ok=False,
+                message="该订单正在提交中，请稍候，请勿重复提交",
+            )
+        # 回放首次结果：即便首次响应在半路丢了，重试也能拿到同一个编号，不会再下单
+        return outcome.model_copy(update={"duplicated": True})
+
+    def _begin_attempt(self, key: str) -> None:
+        """占位：从这一刻起到结果落库，同键请求一律拦为"提交中"。"""
+
+        self._attempts[key] = (None, time.monotonic())
+
+    def _finish_attempt(self, key: str, outcome: OrderSubmitOutcome) -> None:
+        """结果落库，后续同键请求回放它（不论成功还是失败）。"""
+
+        self._attempts[key] = (outcome, time.monotonic())
 
     async def submit(
         self,
@@ -300,16 +402,36 @@ class OrderSubmitService:
         czman: str,
         ticket: str = "",
         service_codes: list[str] | None = None,
+        request_id: str = "",
     ) -> OrderSubmitOutcome:
         """提交一单；缺少操作人时按 poOrder 口径直接驳回。
 
         `service_codes` 是服务项目面板勾选的服务代码（按面板顺序）；None = 用默认值。
+
+        `request_id` 是幂等键：带了它就开启去重——同一把键的重复/重试请求**不会**
+        再调 poOrder，而是回放首次结果（`duplicated=True`）；首次还在途时返回
+        "提交中"。留空则不启用幂等（兼容旧调用方），行为与以往一致。
         """
 
+        key = text_of(request_id)
+        if key:
+            # 先看有没有同一把键的既有结果：有就回放，绝不重复下单
+            recalled = self._recall_attempt(key)
+            if recalled is not None:
+                logger.info(
+                    "提交订单：幂等键命中，回放已有结果（键=%s 成功=%s）",
+                    key,
+                    recalled.ok,
+                )
+                return recalled
         operator = text_of(czman)
         if not operator:
             # 文案与 poOrder 前端拦截器一致：提交报文必须有操作人
-            return OrderSubmitOutcome(ok=False, message="无操作人数据，请重新登录")
+            # 以下三种都是"还没碰 poOrder"的拦截，不落幂等记录：用户补齐条件后
+            # 用同一把键重试即可，不会被挡在缓存外
+            return OrderSubmitOutcome(
+                ok=False, message="无操作人数据，请重新登录", retryable=True
+            )
         if not self.submit_enabled:
             # 写操作默认关闭：不在代码里猜环境，要让某环境下单只能显式打开
             return OrderSubmitOutcome(
@@ -318,42 +440,77 @@ class OrderSubmitService:
                     "提交订单功能未开启：需在 .env 设置 "
                     "DOCMIND_ORDER_SUBMIT_ENABLED=true 后重启服务"
                 ),
+                retryable=True,
             )
         if self.collector is None:
             return OrderSubmitOutcome(
-                ok=False, message="提交接口未配置（DOCMIND_ORDER_API_BASE）"
+                ok=False,
+                message="提交接口未配置（DOCMIND_ORDER_API_BASE）",
+                retryable=True,
             )
+        problem = validate_numeric_fields(form)
+        if problem:
+            # 数值不合法：还没碰 poOrder，不占幂等键。用户改好后可用同一把键重试
+            return OrderSubmitOutcome(ok=False, message=problem, retryable=True)
         payload = build_submit_payload(
             form, order, operator, service_codes=service_codes
         )
+        # 报文组装是同步的，放在占位之前：万一它抛错就不会留下永远"提交中"的占位。
+        # 从这里往下只要带键，就必须先占位——同键请求在结果落库前一律被拦下。
+        if key:
+            self._begin_attempt(key)
         started = time.perf_counter()
         try:
             raw = await self.collector.submit_order(payload, ticket=ticket)
         except Exception:
             logger.exception("提交订单失败：操作人 %s", operator)
-            return OrderSubmitOutcome(
-                ok=False, message="提交接口调用失败，请稍后重试", payload=payload
+            # 结果未知：poOrder 可能已经建单，也可能没收到。这条也记账，
+            # 于是同一把键的重试只会回放这句提示、不会再发一次单。
+            outcome = OrderSubmitOutcome(
+                ok=False,
+                message=(
+                    "提交接口调用失败，结果未知：订单可能已创建，"
+                    "请先到 poOrder 核对后再操作（本次重试不会重复建单）"
+                ),
+                payload=payload,
+                retryable=False,
             )
+            if key:
+                self._finish_attempt(key, outcome)
+            return outcome
         elapsed_ms = round((time.perf_counter() - started) * 1000)
-        ok, order_code, message = parse_submit_result(raw)
+        status, order_code, message = parse_submit_result(raw)
         # 建单偏慢（poOrder 侧要跑信控等一整套校验，实测十几秒），因此把耗时、报文与
         # 原始响应都记进服务端日志，方便事后回答「到底建成没有、慢在哪」。
         # 报文含客户与联系人信息，只进日志、不额外外发
         logger.info(
-            "提交订单完成：操作人=%s 耗时=%sms 成功=%s 编号=%s",
+            "提交订单完成：操作人=%s 耗时=%sms 判定=%s 编号=%s",
             operator,
             elapsed_ms,
-            ok,
+            status,
             order_code or "-",
         )
         # 报文与原始响应都记在 info：核对「到底提交了什么、返回了什么」全靠它们。
         # 报文含客户与联系人信息，生产环境若要收敛，把 DOCMIND_SYSTEM_LOG_LEVEL 调高即可
         logger.info("提交报文=%s", json.dumps(payload, ensure_ascii=False))
         logger.info("提交响应=%s", json.dumps(raw, ensure_ascii=False, default=str))
-        return OrderSubmitOutcome(
-            ok=ok,
+        if status == SUBMIT_UNCERTAIN:
+            # 定性不了：给操作员一句能照做的提示，别让它被当成"成功"或"失败"
+            detail = f"（接口提示：{message}）" if message else ""
+            message = (
+                f"提交结果不确定：接口没有返回订单编号{detail}。"
+                "请到 poOrder 核对；为避免重复建单，本次重试不会重复提交"
+            )
+        # 已建单 / 明确被拒都算"已有定论"，前端据此换新的幂等键（下一次点击按全新一单
+        # 处理）；"不确定"保留同一把键，重试只回放这条结果，绝不重复下单
+        outcome = OrderSubmitOutcome(
+            ok=status == SUBMIT_CREATED,
             order_code=order_code,
             message=message,
             payload=payload,
             response=raw if isinstance(raw, dict) else None,
+            retryable=status != SUBMIT_UNCERTAIN,
         )
+        if key:
+            self._finish_attempt(key, outcome)
+        return outcome

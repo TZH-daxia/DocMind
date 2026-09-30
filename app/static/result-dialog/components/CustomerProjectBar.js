@@ -51,8 +51,11 @@ export const CustomerProjectBar = {
       // 信控查询的请求序号：写回前比对，丢弃过期响应
       creditSeq: 0,
       // 同一目标（客户 + 站点 + 系统）刚查过的记录：切任务时 form 赋值与站点恢复会各
-      // 触发一次查询，两个请求同时打上游既慢又白费 —— 短窗口内去重，见 CREDIT_DEDUPE_MS
-      creditCache: { key: "", at: 0 },
+      // 触发一次查询，两个请求同时打上游既慢又白费 —— 短窗口内**复用同一个请求**，
+      // 见 CREDIT_DEDUPE_MS。`promise` 必须一并缓存：命中时要把结果照样写回，
+      // 否则"发请求的那次响应因序号过期被丢、最新这次又因去重不发请求"，
+      // 信控就永远不显示（症状：填完委托客户下方空白，切走再切回才有）
+      creditCache: { key: "", at: 0, promise: null },
     };
   },
   computed: {
@@ -110,24 +113,32 @@ export const CustomerProjectBar = {
         // 客户没选（手输未选），或站点被清空（项目站点权限不通过时会清空站点）：
         // 信控是「客户 + 站点」两个维度的，缺一个就没有结论，直接收起这一行
         this.creditHint = "";
-        this.creditCache = { key: "", at: 0 };
+        this.creditCache = { key: "", at: 0, promise: null };
         return;
       }
       // 信控按 fid + 站点 + 业务系统 三个维度查（漏了 system 会少掉系统专属的限制）
       const system = derivedSystem(dialogState.order);
-      // 同一目标刚查过就不再打上游：切换任务时同一个目标会被触发两次
-      //（form 整体替换一次、站点恢复一次），去重后只留一个请求，避免和原件图片抢连接
       const cacheKey = `${fid}|${this.currentArea}|${system}`;
       const now = Date.now();
+      let request;
       if (
         this.creditCache.key === cacheKey &&
+        this.creditCache.promise &&
         now - this.creditCache.at < CREDIT_DEDUPE_MS
       ) {
-        return;
+        // 同一目标刚查过（含"还在路上"）：复用那次请求，不再打上游 —— 切换任务时同一个
+        // 目标会被触发两次（form 整体替换一次、站点恢复一次），去重后只留一个请求，
+        // 避免和原件图片抢连接。
+        // **命中后必须照样把结果写回**：若这里直接 return，就会出现"真正发请求的那次
+        // 响应因序号过期被丢弃、而最新这次又因去重不发请求"，信控于是永远不显示
+        //（症状：填完委托客户下方空白，切走再切回才有）
+        request = this.creditCache.promise;
+      } else {
+        request = fetchCredit(fid, this.currentArea, system);
+        this.creditCache = { key: cacheKey, at: now, promise: request };
       }
-      this.creditCache = { key: cacheKey, at: now };
       try {
-        const payload = await fetchCredit(fid, this.currentArea, system);
+        const payload = await request;
         if (seq !== this.creditSeq) {
           return;
         }
@@ -165,6 +176,10 @@ export const CustomerProjectBar = {
       // 选中的这条进报文，其余固定项由后端补齐
       this.form.customerRelList = item ? [item] : [];
     },
+    onCustomerStatus(state) {
+      // 委托客户组合框的值确认状态：交给提交校验判断「主数据可用时是否必须下拉选中」
+      dialogState.fieldSelections.fid = state;
+    },
   },
   template: `
     <div class="doc-dialog-customer-field">
@@ -175,6 +190,7 @@ export const CustomerProjectBar = {
             :adapter="adapter"
             :locked="locked"
             @update:model-value="onCustomerChange"
+            @status="onCustomerStatus"
             @focus="$emit('focus')"
           />
         </div>

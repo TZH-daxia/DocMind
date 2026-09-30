@@ -1422,11 +1422,13 @@ class AnalysisService(WorkflowEventPublisher):
         czman: str,
         ticket: str = "",
         service_codes: list[str] | None = None,
+        request_id: str = "",
     ) -> dict[str, Any]:
         """提交订单：组装报文并调用 poOrder 的提交接口。
 
         表单与订单上下文由前端给出（弹窗里可能被人工改过），后端只按报文契约取值；
         `service_codes` 是服务项目面板勾选的服务代码（按面板顺序）。
+        `request_id` 是幂等键：同一票订单的重试带同一个值，后端回放首次结果、不重复下单。
         """
 
         outcome = await self.order_submit_service.submit(
@@ -1435,6 +1437,7 @@ class AnalysisService(WorkflowEventPublisher):
             czman=czman,
             ticket=ticket,
             service_codes=service_codes,
+            request_id=request_id,
         )
         return outcome.model_dump(mode="json")
 

@@ -2,6 +2,9 @@ const ACTIVE_BOX_ID = "doc-preview-active-box";
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.25;
+// 等页面图片出结果的兜底时限：个别图片既不 load 也不 error（连接挂起）时，最多再等
+// 这么久就把这一批当作加载完，免得弹窗的加载遮罩一直盖着出不来
+const SETTLE_TIMEOUT_MS = 4000;
 
 export const DocumentPreview = {
   name: "DocumentPreview",
@@ -13,8 +16,19 @@ export const DocumentPreview = {
     highlightStatus: { type: String, default: "" },
     highlightKey: { type: String, default: "" },
   },
+  // settled：这一批页面图片是否都已出结果（加载成功或失败）。弹窗据此收起加载遮罩，
+  // 保证"图片也都到位了才露出内容"，而不是先露出半张、剩下的再一张张蹦出来
+  emits: ["settled"],
   data() {
-    return { failedPages: {}, scale: MIN_ZOOM, panState: null, panHandlers: null };
+    return {
+      failedPages: {},
+      // 已出结果的页面 url：每张图 load / error 各标一次
+      settledUrls: {},
+      settleTimer: null,
+      scale: MIN_ZOOM,
+      panState: null,
+      panHandlers: null,
+    };
   },
   computed: {
     pages() {
@@ -51,26 +65,50 @@ export const DocumentPreview = {
         maxWidth: this.isZoomed ? "none" : "",
       };
     },
+    // 这一批页面是否都出了结果；页数为 0（没有要等的图）时视为完成
+    allSettled() {
+      return this.pageUrls.every((url) => this.settledUrls[url]);
+    },
   },
   watch: {
+    // 加载状态一变就上报（immediate：一挂载父组件就有确定值）
+    allSettled: {
+      immediate: true,
+      handler(value) {
+        this.$emit("settled", value);
+      },
+    },
     highlightKey() {
       this.$nextTick(() => this.scrollToHighlight());
     },
-    // 换任务时回到原始大小，避免上一个任务的缩放状态带过来
+    // 换任务：回到原始大小、清掉上一批的加载结果（于是 allSettled 变 false、遮罩继续盖住），
+    // 并启动超时兜底
     pageUrls() {
+      this.settledUrls = {};
       this.setScale(MIN_ZOOM);
       this.resetScroll();
+      clearTimeout(this.settleTimer);
+      this.settleTimer = setTimeout(() => this.settleAll(), SETTLE_TIMEOUT_MS);
     },
   },
   beforeUnmount() {
+    clearTimeout(this.settleTimer);
     this.stopPan();
   },
   methods: {
     markFailed(url) {
       this.failedPages[url] = true;
+      this.settledUrls[url] = true;
     },
     markLoaded(url) {
       this.failedPages[url] = false;
+      this.settledUrls[url] = true;
+    },
+    // 超时兜底：把所有页面直接标成已出结果，别让遮罩一直盖着
+    settleAll() {
+      this.pageUrls.forEach((url) => {
+        this.settledUrls[url] = true;
+      });
     },
     boxId(page, index) {
       return page.pageNo === this.focusedPage && index === 0 ? ACTIVE_BOX_ID : null;

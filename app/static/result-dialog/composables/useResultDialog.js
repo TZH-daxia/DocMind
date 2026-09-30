@@ -31,6 +31,12 @@ import {
   rememberSubmittedTask,
 } from "../submittedTasks.js";
 import {
+  clearSubmitRequestId,
+  loadSubmitRequestId,
+  newSubmitRequestId,
+  rememberSubmitRequestId,
+} from "../submitRequestId.js";
+import {
   CONTEXT_FIELD_DEFAULTS,
   CONTEXT_FIELDS,
   DATE_VALUE_PATTERN,
@@ -39,6 +45,7 @@ import {
   PARTY_FIELDS,
 } from "../constants.js";
 import { dialogState } from "../state.js";
+import { isValidNumericField } from "../fields.js";
 import { firstErrorField, validateBeforeSubmit } from "./useSubmitValidation.js";
 
 const { watch } = window.Vue;
@@ -69,17 +76,23 @@ function rememberForm(taskId) {
 // 切换任务与提交成功时另有立即写入，所以这里只兜"边填边存"这一种情况。
 const DRAFT_DEBOUNCE_MS = 400;
 let draftTimer = null;
+// `dialogState.form` 当前**属于哪个任务**（null = 还没有归属，正在切换中）。
+// 只比对 dialogState.taskId 是不够的：loadTask 一进去就把 taskId 换成了新任务，而
+// form 要到 applyResult 才替换。这中间行组件按 resetKey 重建，ProjectSelect /
+// ContactSelect 会拿**上一版的 form** 自动回写（自动带出唯一项目 / 默认联系人），
+// 那些内容就会被当成"新任务的草稿"存下来 —— 表现为切换任务后表单内容串到另一个任务
+let formTaskId = null;
 watch(
   () => dialogState.form,
   () => {
     const taskId = dialogState.taskId;
-    if (!taskId) {
+    if (!taskId || formTaskId !== taskId) {
       return;
     }
     clearTimeout(draftTimer);
     draftTimer = setTimeout(() => {
-      // 表单变化后任务已切走：不要再把上一个任务的表单落到新任务名下
-      if (dialogState.taskId === taskId) {
+      // 表单变化后任务已切走（或表单已不再属于这个任务）：不要再落到这个任务名下
+      if (dialogState.taskId === taskId && formTaskId === taskId) {
         rememberDraftForm(taskId, dialogState.form);
       }
     }, DRAFT_DEBOUNCE_MS);
@@ -198,6 +211,25 @@ async function loadTask(taskId) {
     return;
   }
   dialogState.taskId = taskId;
+  // 立刻清掉上一个任务的展示内容。form / 原文定位 / 证据 / 错误标记都还挂着上一个
+  // 任务的值，而本任务的结果要等两个网络往返才回来：不清的话，这段时间里行组件
+  // 重建后会读到上一个任务的表单（看起来"内容串到新任务了"），自组件还会据此回写；
+  // formTaskId 置空则让草稿 watcher 在这一窗口内闭嘴（见它的说明）
+  formTaskId = null;
+  dialogState.form = {};
+  // 原件图片也一并清掉：否则切换期间左侧还挂着上一个任务的页面图
+  dialogState.pageUrls = [];
+  dialogState.original = {};
+  dialogState.rawValues = {};
+  dialogState.evidences = {};
+  dialogState.locations = {};
+  dialogState.portCandidates = {};
+  dialogState.focusedLocationKey = "";
+  dialogState.highlightBoxes = [];
+  dialogState.highlightStatus = "";
+  dialogState.fieldStatus = {};
+  dialogState.fieldSelections = {};
+  dialogState.errors = {};
   // 已提交状态跟着任务走：刷新页面后也从本地记录恢复，按钮仍是「已提交」
   dialogState.submitted = submittedTaskIds.has(String(taskId));
   // 订舱编号同样跟着任务走：切任务、刷新页面后仍显示（在弹窗头部的编号位上）；
@@ -220,6 +252,7 @@ async function loadTask(taskId) {
   if (!savedServices) {
     rememberDraftServices(taskId, dialogState.serviceCodes);
   }
+  // 遮罩跟着实际加载时长走，不做人为延时：没改动过的任务往往秒开，那就一闪而过
   dialogState.loading = true;
   dialogState.error = "";
   try {
@@ -303,12 +336,15 @@ function buildPageUrls(taskId, pageCount) {
   return Array.from({ length: total }, (_, index) => pageImageUrl(taskId, index + 1));
 }
 
-function isControlValueValid(control, text) {
+function isControlValueValid(key, control, text) {
   if (control === "date") {
     return DATE_VALUE_PATTERN.test(text);
   }
   if (control === "number" || control === "integer") {
-    return Number.isFinite(Number(text));
+    // 与提交校验同一套规则：0 / 负数 / 科学计数 / 小数当整数 一律判非法。
+    // 于是 AI 给出的这类值会被挪进 rawValues 提示人工确认，而不是原样进表单
+    //（原实现只要 Number.isFinite 就放行，负值、0 与 1e3 都能进表单）
+    return isValidNumericField(key, text);
   }
   return true;
 }
@@ -381,7 +417,7 @@ function applyResult(result, taskId) {
       // 控件本身渲染不出来的原值（日期区间、带单位的数字等）一律不进入校验：
       // 界面显示为空就必须按空拦截，原值移到 rawValues 作为提示交给人工确认，
       // 避免出现"界面看着没填、校验却认为有值"的漏放
-      if (text && !isControlValueValid(control, text)) {
+      if (text && !isControlValueValid(key, control, text)) {
         rawValues[key] = text;
         form[key] = "";
       } else {
@@ -401,9 +437,13 @@ function applyResult(result, taskId) {
   // 恢复范围含横栏字段 —— 只恢复表格字段会让"人工选好的项目"在切任务/刷新后消失
   mergeDraftForm(form, loadDraftForm(taskId));
   dialogState.form = form;
+  // 到这里 form 才真正属于这个任务：允许草稿 watcher 开始记账（见 formTaskId 的说明）
+  formTaskId = taskId;
   dialogState.original = original;
   dialogState.fieldStatus = fieldStatus;
   dialogState.rawValues = rawValues;
+  // 组合框确认状态（fieldSelections）已在 loadTask 开头清空，行组件按 resetKey 重建后
+  // mounted 会重新上报；同一个任务重新加载结果时组件不重建，但状态本来也没变
   dialogState.evidences = collectEvidences(meta);
   dialogState.locations = collectLocations(meta);
   dialogState.portCandidates = collectPortCandidates(meta);
@@ -498,7 +538,7 @@ export const resultDialog = {
   async submit() {
     // 先做本地必填校验（必填项在 constants.js 的 REQUIRED_FIELDS），再提交给后端。
     // 本地不通过就直接返回，连接口都不打
-    const errors = validateBeforeSubmit(dialogState.form);
+    const errors = validateBeforeSubmit(dialogState.form, dialogState.fieldSelections);
     dialogState.errors = errors;
     if (Object.keys(errors).length) {
       return { ok: false, errors, firstError: firstErrorField(errors) };
@@ -549,6 +589,11 @@ export const resultDialog = {
       // 上一次还没回来：避免连点造成重复下单
       return { ok: false, errors: {}, firstError: null, busy: true };
     }
+    // 幂等键：同一把键的重试不会被后端当成新单。按任务持久化，刷新页面后重试仍是
+    // 同一次尝试；只有后端确认"已有定论"（retryable）时才作废、下次换新键。
+    const requestId =
+      loadSubmitRequestId(dialogState.taskId) ||
+      rememberSubmitRequestId(dialogState.taskId, newSubmitRequestId());
     dialogState.submitting = true;
     try {
       const outcome = await submitOrder({
@@ -562,10 +607,18 @@ export const resultDialog = {
         // 当前用户（登录名）= 报文的 czman 与 customerRelList[].addman。生产环境由官网
         // 传入，开发期由 currentUser.js 从 URL 参数 / poOrder 的 Cookie 兜底
         czman: currentUserName(),
+        // 幂等键：后端据此回放首次结果、不重复下单
+        request_id: requestId,
         // poOrder 票据不放这里：由 api.js 的 ticketHeaders() 统一放进 Authorization
         // 请求头（不进 URL、不进请求体），后端 current_ticket 依赖同口径读取
       });
       if (!outcome.ok) {
+        // 后端说"已有定论"（可安全重试）→ 作废幂等键，下次点击算全新一单；
+        // 结果未知（超时 / 正在提交中）→ 保留键，重试仍打在同一把键上，不会重复建单。
+        // 老版本后端不返回该字段：按"可重试"处理，退回改动前的行为
+        if (outcome.retryable !== false) {
+          clearSubmitRequestId(dialogState.taskId);
+        }
         // 接口给出的原因原样带出去（缺操作人 / 客户信控 / 后端异常）
         return {
           ok: false,
@@ -574,6 +627,8 @@ export const resultDialog = {
           message: outcome.message || "提交失败",
         };
       }
+      // 成功：这票订单已定论，清掉幂等键
+      clearSubmitRequestId(dialogState.taskId);
       // 订舱编号显示在弹窗头部、叉号左侧（state.orderCode）。
       // 以后端返回的 order_code 为准；万一后端那层没取到（例如服务还没重启、
       // 或 poOrder 又换了措辞），再按编号格式从接口提示里兜一次底：
@@ -597,9 +652,13 @@ export const resultDialog = {
         firstError: null,
         // 用兜底后的编号：提示文案与编号槽显示的是同一个值
         orderCode,
+        // true = 这次是幂等回放（重试命中了上一次的结果），提示文案据此换措辞
+        duplicated: Boolean(outcome.duplicated),
         message: outcome.message || "",
       };
     } catch (error) {
+      // 连响应都没拿到（超时 / 断网）：结果未知，**保留**幂等键，
+      // 用户再点「提交」就是同一次尝试的重试，后端回放结果、不会重复建单
       return {
         ok: false,
         errors: {},

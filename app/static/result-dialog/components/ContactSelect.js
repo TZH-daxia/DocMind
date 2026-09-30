@@ -40,8 +40,10 @@ export const ContactSelect = {
       loaded: false,
       // 查询序号：切客户/换站点时丢弃过期响应
       seq: 0,
-      // 同一目标（客户 + 站点 + 系统）刚查过的记录，用于短窗口去重
-      loadCache: { key: "", at: 0 },
+      // 同一目标（客户 + 站点 + 系统）刚查过的记录：短窗口内**复用同一个请求**。
+      // `promise` 必须一并缓存，命中时要把结果照样写回 —— 裸 return 会让"发请求的那次
+      // 响应因序号过期被丢、最新这次又不发请求"，联系人候选永远带不出来
+      loadCache: { key: "", at: 0, promise: null },
     };
   },
   computed: {
@@ -156,21 +158,27 @@ export const ContactSelect = {
         // 没客户 / 没站点都不查：poOrder 的 getCustomerRelData 开头也是 `if (!area) return`
         this.items = [];
         this.loaded = false;
-        this.loadCache = { key: "", at: 0 };
+        this.loadCache = { key: "", at: 0, promise: null };
         return;
       }
-      // 同一目标刚查过就不再打上游（切任务时会连续触发两次）
+      // 同一目标刚查过（含"还在路上"）就复用那次请求，不再打上游（切任务时会连续触发两次）。
+      // 复用后仍要把结果写回：裸 return 会让"发请求的那次响应因序号过期被丢、
+      // 最新这次又不发请求"，联系人候选与默认联系人于是永远带不出来
       const cacheKey = `${fid}|${this.area}|${this.system}`;
       const now = Date.now();
+      let request;
       if (
         this.loadCache.key === cacheKey &&
+        this.loadCache.promise &&
         now - this.loadCache.at < CONTACT_DEDUPE_MS
       ) {
-        return;
+        request = this.loadCache.promise;
+      } else {
+        request = fetchContacts(fid, this.area, this.system);
+        this.loadCache = { key: cacheKey, at: now, promise: request };
       }
-      this.loadCache = { key: cacheKey, at: now };
       try {
-        const payload = await fetchContacts(fid, this.area, this.system);
+        const payload = await request;
         if (seq !== this.seq) {
           return;
         }

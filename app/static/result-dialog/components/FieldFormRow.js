@@ -4,6 +4,7 @@ import {
   FIELD_STATUS_LABELS,
   REVIEW_STATUSES,
 } from "../constants.js";
+import { dialogState } from "../state.js";
 import { CustomerProjectBar } from "./CustomerProjectBar.js";
 import { DatePicker } from "./DatePicker.js";
 import { SearchCombobox } from "./SearchCombobox.js";
@@ -99,6 +100,11 @@ export const FieldFormRow = {
       // 下拉回填的值（委托客户 ID / 港口三字码）交给 target 的 setter 写回表单
       this.target = value;
     },
+    onComboboxStatus(state) {
+      // 港口组合框的值确认状态：交给提交校验判断「主数据可用时是否必须下拉选中」。
+      // 行组件按任务重建（见 FieldFormPanel 的 resetKey），状态不会跨任务残留
+      dialogState.fieldSelections[this.row.fieldKey] = state;
+    },
     sanitizeNumber(value) {
       const digits = String(value).replace(/[^\d.]/g, "");
       if (this.row.control === "integer") {
@@ -157,7 +163,7 @@ export const FieldFormRow = {
       }
       return this.row.control === "date"
         ? `原文：${raw}（不是标准日期，请重新选择）`
-        : `原文：${raw}（不是纯数字，请重新填写）`;
+        : `原文：${raw}（不是有效的正数，请重新填写）`;
     },
     reviewHint() {
       // 已提交：不再展示「要审核的原文」，提交后的界面只留核对结果
@@ -351,6 +357,7 @@ export const FieldFormRow = {
           :adapter="comboboxAdapter"
           :locked="locked"
           @update:model-value="selectComboboxValue"
+          @status="onComboboxStatus"
           @focus="onFieldFocus"
         />
         <input

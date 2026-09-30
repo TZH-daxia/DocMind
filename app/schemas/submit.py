@@ -16,6 +16,14 @@ class OrderSubmitRequest(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    request_id: str = Field(
+        default="",
+        description=(
+            "幂等键：同一票订单的多次重试必须带同一个值。后端据此回放首次结果、"
+            "不再重复下单（超时重试也不会重复建单）；留空表示不启用幂等，"
+            "兼容未升级的旧调用方"
+        ),
+    )
     form: dict[str, Any] = Field(default_factory=dict, description="弹窗核对后的表单值")
     order: dict[str, Any] = Field(
         default_factory=dict, description="工具条上的订单上下文（站点/服务方式/运输种类/订舱操作）"
@@ -53,4 +61,17 @@ class OrderSubmitOutcome(BaseModel):
     response: dict[str, Any] | None = Field(
         default=None,
         description="poOrder 的原始响应，便于核对（resultstatus / resultno / resultmessage）",
+    )
+    duplicated: bool = Field(
+        default=False,
+        description="本次结果是否由幂等键回放而来（true 表示没有真的再下一次单）",
+    )
+    retryable: bool = Field(
+        default=False,
+        description=(
+            "是否可以安全重试：true = 本次尝试已有定论（已建单，或已被 poOrder 明确拒绝），"
+            "下次提交应换新的幂等键、按新单处理；false = 结果未知（超时、正在提交中，"
+            "或接口没返回订单编号定性不了），重试会命中幂等缓存、不会重复建单，"
+            "应保留同一个幂等键"
+        ),
     )

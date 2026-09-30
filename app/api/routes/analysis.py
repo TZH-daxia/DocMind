@@ -188,6 +188,7 @@ async def submit_order(
         service_codes=payload.service_codes,
         czman=payload.czman,
         ticket=ticket or payload.ticket,
+        request_id=payload.request_id,
     )
 
 
