@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import time
-from datetime import date
+from datetime import datetime
 from typing import Any
 
 from app.collector.order_submit_collector import OrderSubmitCollector
@@ -150,7 +150,9 @@ def build_submit_payload(
     没给，按默认的唯凯配舱（OA0010）处理；空列表表示一项服务都不做。
     """
 
-    submit_date = today or date.today().isoformat()
+    # 取带时区的本地「今天」：date.today() 在跨时区/夏令时切换时可能与订单系统
+    # 的日期不一致（容器里 TZ=Asia/Shanghai，这里按同一口径生成）
+    submit_date = today or datetime.now().astimezone().date().isoformat()
     # 运输种类（出口/进口/国内）与服务方式（空运/海运/…）：命名沿用 poOrder 前端
     opersystem = text_of(order.get("opersystem"))
     opersystemdom = text_of(order.get("opersystemdom"))

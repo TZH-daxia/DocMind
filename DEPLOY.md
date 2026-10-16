@@ -89,6 +89,14 @@ chmod 600 .env
 # ===== 必需 =====
 DEEPSEEK_API_KEY=sk-xxxxxx
 
+# ===== 模型兜底（可选，强烈建议配）=====
+# 主模型（DeepSeek）整体不可用时由它接管：换的是"另一家上游"，账号限流 /
+# 欠费 / 宕机都还能出结果。不填 API Key 则整条兜底链路不生效。
+DOCMIND_FALLBACK_API_KEY=sk-xxxxxx                       # 阿里云百炼（通义千问）
+DOCMIND_FALLBACK_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+DOCMIND_FALLBACK_MODEL=qwen3.8-flash                     # 字段抽取
+DOCMIND_FALLBACK_VISION_MODEL=qwen3.8-flash              # 图片识别（可单独降档）
+
 # ===== 主数据（留空则港口归一化与两个下拉整体停用）=====
 DOCMIND_PORT_API_BASE=http://<poOrder 内网地址>/PublicWebApi/
 DOCMIND_CUSTOMER_API_BASE=
@@ -224,6 +232,9 @@ ssh -L 8000:127.0.0.1:8000 root@<服务器IP>
 | 数据位置 | `./data/parsed_documents/<task_id>/`、`./data/analysis_results/`；产物默认保留 24 小时自动清理 |
 | 磁盘 | `df -h /data`；清理用 `rm -rf data/parsed_documents/*`（属主是 10001，root 可删） |
 | 停止 | `docker compose down`（本项目的容器与网络，不影响其它项目） |
+| 模型兜底 | 主模型（DeepSeek）整轮重试失败时自动切到 `DOCMIND_FALLBACK_MODEL`（默认千问）。日志关键字：`改用兜底 provider`（本次已切换）、`熔断`（主 provider 连续失败后跳过，冷却 90s 后放行一次试探）。排查用 `grep -E "provider|熔断|兜底" logs/app.log` |
+| 关闭兜底 | 不配 `DOCMIND_FALLBACK_API_KEY`（或置空）即完全不启用，行为与没加兜底时一致 |
+| 兜底能力验收 | `uv run python tools/eval_fallback_model.py --dir <托书目录> --limit 3 --compare`，报告写到 `data/model_eval/<时间戳>/report.md`（逐字段对比主/兜底两个 provider） |
 
 ---
 
@@ -238,6 +249,8 @@ ssh -L 8000:127.0.0.1:8000 root@<服务器IP>
 | 全站 404 | nginx 配置没加载 → `docker exec docmind-gateway nginx -t` |
 | 改了 `.env` 没生效 | 少了 `--force-recreate` |
 | 改了 nginx 配置没生效 | 少了 `nginx -s reload` |
+| 任务大面积报"识别服务响应超时" | 主模型侧问题（限流 / 欠费 / 地域故障）。看日志有没有 `改用兜底 provider`：有则说明已切换，任务应已恢复正常；若仍频繁超时，检查兜底 Key 与配额 |
+| 明明配了兜底却没生效 | `DOCMIND_FALLBACK_API_KEY` 为空、或改了 `.env` 没 `--force-recreate`；启动日志会打印 `订单抽取 provider 链：deepseek/... -> qwen/...`，没有第二段就是没配 |
 | 上传大文件 413 | `client_max_body_size` 与 `DOCMIND_MAX_FILE_SIZE_BYTES` 不一致 |
 | 进度条不动 | SSE 被缓冲 → 检查 `proxy_buffering off` 与 `proxy_read_timeout` |
 | DOC / XLS 转换失败 | `docker compose exec docmind bash -lc 'soffice --version; ls -l /usr/lib/libreoffice/program/python'` |

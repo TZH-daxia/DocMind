@@ -10,11 +10,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from app.agent.deepseek_extractor import (
-    DeepSeekExtractionAgent,
     EmptyExtractionError,
+    ExtractionAgent,
     ImageInput,
 )
-from app.agent.model_call import ModelCallFailedError, call_with_retry
+from app.agent.model_call import ModelCallFailedError, call_with_failover
 from app.collector.dimension_remark_guard import (
     DIMENSION_REMARK_KEY,
     is_standard_dimension_remark,
@@ -59,9 +59,9 @@ from app.schemas.po_order import (
 )
 from app.service.customer_contact_service import CustomerContactService
 from app.service.customer_service import CustomerService
+from app.service.order_submit_service import OrderSubmitService
 from app.service.port_normalization_service import PortNormalizationService
 from app.service.project_service import ProjectService
-from app.service.order_submit_service import OrderSubmitService
 from app.service.requirements.po_order_requirements import PoOrderRequirementService
 from app.service.site_service import SiteService
 from app.service.user_default_service import UserDefaultService
@@ -378,7 +378,9 @@ class AnalysisService(WorkflowEventPublisher):
         self.settings = settings
         self.file_store = FileStore(settings)
         self.renderer = LocalDocumentRenderer(self.file_store, settings)
-        self.deepseek = DeepSeekExtractionAgent(settings)
+        # 属性名保留 deepseek（历史命名，测试与调试直接引用）；实例内部已按
+        # provider 链组织：主 provider + 可选的兜底 provider（见 app/agent/providers.py）
+        self.deepseek = ExtractionAgent(settings)
         # 提示词在每次抽取时按需读取，便于直接改 .md 即时生效，无需重启服务
         self.requirement_service = PoOrderRequirementService()
         self.port_service = PortNormalizationService(settings, self.file_store)
@@ -1107,17 +1109,15 @@ class AnalysisService(WorkflowEventPublisher):
             self._load_images, state.get("image_paths", [])
         )
         # 单次墙钟硬超时 + 按配置重试（含 VLM 拒答重试），次数与上限都由配置统一控制：
-        # 上游（DeepSeek）异常时不再依赖 SDK 的 read 超时，也不会无限挂着
-        vlm_content = await call_with_retry(
+        # 上游（DeepSeek）异常时不再依赖 SDK 的 read 超时，也不会无限挂着。
+        # 调用列表由 agent 按 provider 顺序给出（主 → 兜底）；没配兜底时就只有一个
+        # provider，行为与改造前逐字一致
+        vlm_content = await call_with_failover(
             "VLM 图片识别",
-            lambda: self.deepseek.describe_images(
-                load_po_order_vision_prompt(),
-                images,
-            ),
-            timeout_seconds=self.settings.model_vision_timeout_seconds,
-            retries=self.settings.model_call_retries,
+            self.deepseek.vision_calls(load_po_order_vision_prompt(), images),
             should_retry=self._is_vlm_refusal,
             guard=lambda: self._gate("model", self.settings.model_max_concurrent),
+            circuit=self.deepseek.circuit,
         )
         parsed_directory = Path(state["parsed"]["parsed_directory"])
         source_stem = self.file_store.source_stem(state["source_name"])
@@ -1161,20 +1161,20 @@ class AnalysisService(WorkflowEventPublisher):
             raise DocumentTypeMismatchError(MISMATCH_MESSAGE, hint=content_hint)
         try:
             # 超时覆盖整个 extract()：内部含"结构化 → free-form 回退 → 空结果重试"，
-            # 外层墙钟兜底保证这一步总耗时可控，不再依赖 SDK 的 read 超时
-            model_candidates = await call_with_retry(
+            # 墙钟兜底保证这一步总耗时可控，不再依赖 SDK 的 read 超时。
+            # provider 顺序由 agent 给出（主 → 兜底），每个 provider 各自带超时与重试预算
+            model_candidates = await call_with_failover(
                 "字段抽取",
-                lambda: self.deepseek.extract(
+                self.deepseek.extract_calls(
                     system_prompt=load_po_order_extraction_prompt(),
                     vlm_image_content=vlm_image_content,
                     context=state["context"],
                 ),
-                timeout_seconds=self.settings.model_extract_timeout_seconds,
-                retries=self.settings.model_call_retries,
                 # 空结果是"模型正常返回但抽不出字段"，extract() 内部已重试过，
-                # 再重试只会拉长失败耗时，因此不重试直接上抛
+                # 再重试（或换 provider 重试）只会拉长失败耗时，因此直接上抛
                 fatal_exceptions=(EmptyExtractionError,),
                 guard=lambda: self._gate("model", self.settings.model_max_concurrent),
+                circuit=self.deepseek.circuit,
             )
         except EmptyExtractionError:
             if len(vlm_image_content.strip()) < VLM_MIN_CONTENT_CHARS:

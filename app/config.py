@@ -80,6 +80,70 @@ class Settings(BaseSettings):
         default=2, validation_alias="DOCMIND_MODEL_CALL_RETRIES"
     )
 
+    # —— 兜底模型（主模型整体不可用时接管；不配 api_key 则整条兜底链路不生效）——
+    # 当前接的是阿里云百炼（通义千问）的 OpenAI 兼容接口：
+    #   base_url = https://dashscope.aliyuncs.com/compatible-mode/v1
+    # 兜底不是"备用副本"，而是换一家上游：主模型账号限流/欠费/宕机时照样能出结果
+    fallback_api_key: str | None = Field(
+        default=None, validation_alias="DOCMIND_FALLBACK_API_KEY"
+    )
+    fallback_name: str = Field(default="qwen", validation_alias="DOCMIND_FALLBACK_NAME")
+    fallback_base_url: str = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        validation_alias="DOCMIND_FALLBACK_BASE_URL",
+    )
+    # 字段抽取用的兜底模型（结构化输出 + evidence，错值代价最高的一环）
+    fallback_model: str = Field(
+        default="qwen3.8-flash", validation_alias="DOCMIND_FALLBACK_MODEL"
+    )
+    # 图片识别用的兜底模型：留空回退 fallback_model。量大、任务简单时可单独降档
+    fallback_vision_model: str = Field(
+        default="", validation_alias="DOCMIND_FALLBACK_VISION_MODEL"
+    )
+    fallback_temperature: float = Field(
+        default=0.0, validation_alias="DOCMIND_FALLBACK_TEMPERATURE"
+    )
+    fallback_timeout_seconds: float = Field(
+        default=240.0, validation_alias="DOCMIND_FALLBACK_TIMEOUT_SECONDS"
+    )
+    fallback_connect_timeout_seconds: float = Field(
+        default=10.0, validation_alias="DOCMIND_FALLBACK_CONNECT_TIMEOUT_SECONDS"
+    )
+    # 兜底 provider 自己的 SDK 重试与墙钟重试次数。默认都不重试（只试一次）：
+    # 兜底已经是最后一环，再叠一轮重试只会把失败耗时翻倍
+    fallback_max_retries: int = Field(
+        default=0, validation_alias="DOCMIND_FALLBACK_MAX_RETRIES"
+    )
+    fallback_call_retries: int = Field(
+        default=0, validation_alias="DOCMIND_FALLBACK_CALL_RETRIES"
+    )
+    # 结构化输出方式：**实测 function_calling 比 json_schema 稳**（见 tools/
+    # eval_fallback_model.py 的验收报告）：千问的 json_schema(strict) 面对本项目
+    # 13 字段嵌套 schema 时会大面积漏字段（只填 shipper/consignee），
+    # function_calling 能完整抽出全部字段。留空则直接走自由文本 + JSON 解析
+    fallback_structured_method: str = Field(
+        default="function_calling",
+        validation_alias="DOCMIND_FALLBACK_STRUCTURED_METHOD",
+    )
+    # 千问的思考开关（enable_thinking）：默认显式关闭。实测开启（或不传、走平台
+    # 默认值）时，qwen3.8-flash 的结构化抽取耗时会翻倍且字段值出现整体错位
+    fallback_thinking: bool = Field(
+        default=False, validation_alias="DOCMIND_FALLBACK_THINKING"
+    )
+
+    # —— provider 熔断：主模型连续失败后直接跳过，不再让每个任务陪跑一遍它的重试 ——
+    # 连续失败达到阈值即熔断；冷却期结束放行一次试探，成功即恢复
+    model_failover_failure_threshold: int = Field(
+        default=3,
+        ge=1,
+        validation_alias="DOCMIND_MODEL_FAILOVER_FAILURE_THRESHOLD",
+    )
+    model_failover_cooldown_seconds: float = Field(
+        default=90.0,
+        ge=0.0,
+        validation_alias="DOCMIND_MODEL_FAILOVER_COOLDOWN_SECONDS",
+    )
+
     docmind_data_root: Path = Field(default=Path("data"), validation_alias="DOCMIND_DATA_ROOT")
     # 港口主数据接口（poOrder PublicWebApi）根地址，如 http://<host>/PublicWebApi/；
     # 为空时禁用始发港/到达港三字码归一化

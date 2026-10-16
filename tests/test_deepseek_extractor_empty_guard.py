@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from app.agent.deepseek_extractor import DeepSeekExtractionAgent, EmptyExtractionError
+from app.agent.deepseek_extractor import EmptyExtractionError, ExtractionAgent
 from app.config import Settings
 from app.schemas.po_order import PO_ORDER_KEYS
 
@@ -27,13 +27,17 @@ class StubChain:
         return self.outputs.pop(0)
 
 
-def build_agent(outputs: list[str]) -> tuple[DeepSeekExtractionAgent, StubChain]:
-    """构造只走 free-form 的抽取器（结构化链置空便于隔离测试）。"""
+def build_agent(outputs: list[str]) -> tuple[ExtractionAgent, StubChain]:
+    """构造只走 free-form 的抽取器（结构化链置空便于隔离测试）。
 
-    agent = DeepSeekExtractionAgent(Settings(deepseek_api_key="test-key"))
-    agent.structured_chain = None  # type: ignore[assignment]
+    链挂在主 provider 的 client 上（agent.extract() 直接走 clients[0]）。
+    """
+
+    agent = ExtractionAgent(Settings(deepseek_api_key="test-key"))
+    client = agent.clients[0]
+    client.structured_chain = None
     chain = StubChain(outputs)
-    agent.extraction_chain = chain  # type: ignore[assignment]
+    client.extraction_chain = chain  # type: ignore[assignment]
     return agent, chain
 
 

@@ -67,7 +67,10 @@ class UserDefaultService:
         """
 
         name = _text(logname)
-        if not self.enabled:
+        # 用局部变量而不是 `self.enabled`：property 检查不能把 `collector` 收窄成
+        # 非 None，下面调用时 mypy 会报 union-attr
+        collector = self.collector
+        if collector is None:
             return UserDefaults(enabled=False, logname=name)
         if not name:
             # 没有登录名就没法查（接口按 logname 索引），也不算失败
@@ -76,7 +79,7 @@ class UserDefaultService:
         if cached is not None and not self._expired(cached[0]):
             return cached[1]
         try:
-            records = await self.collector.fetch_records(name, DEFAULT_PROJECT, ticket)
+            records = await collector.fetch_records(name, DEFAULT_PROJECT, ticket)
         except Exception:
             logger.exception("用户默认设置拉取失败：logname=%s", name)
             if cached is not None:

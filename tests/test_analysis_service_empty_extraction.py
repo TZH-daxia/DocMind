@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from app.agent.deepseek_extractor import EmptyExtractionError
+from app.agent.model_call import ProviderCall
 from app.config import Settings
 from app.schemas.po_order import PO_ORDER_KEYS
 from app.service.analysis_service import AnalysisService
@@ -25,6 +26,8 @@ class StubExtractor:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
         self.calls = 0
+        # 替身不参与熔断
+        self.circuit = None
 
     async def extract(
         self,
@@ -36,6 +39,29 @@ class StubExtractor:
         if self.error is not None:
             raise self.error
         return []
+
+    def extract_calls(
+        self,
+        *,
+        system_prompt: str,
+        vlm_image_content: str,
+        context: dict[str, Any],
+    ) -> list[ProviderCall]:
+        """把自身包装成单 provider 调用列表（与服务层的多 provider 入口对齐）。"""
+
+        return [
+            ProviderCall(
+                provider="stub",
+                label="字段抽取[stub]",
+                factory=lambda: self.extract(
+                    system_prompt=system_prompt,
+                    vlm_image_content=vlm_image_content,
+                    context=context,
+                ),
+                timeout_seconds=180.0,
+                retries=0,
+            )
+        ]
 
 
 def make_service(tmp_path: Path) -> AnalysisService:
