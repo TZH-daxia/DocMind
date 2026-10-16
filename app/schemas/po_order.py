@@ -1,4 +1,4 @@
-# 订单新增最终输出字段（12 个）。必填性与输出顺序分别维护。
+# 订单新增最终输出字段（13 个）。必填性与输出顺序分别维护。
 # 字段名已与 poOrder 订单新增模块（newOrderAdd.vue）核对对齐。
 PO_ORDER_REQUIRED_KEYS = (
     "fid",                # 委托客户（托书无此字段，由调用方 context 提供）
@@ -12,10 +12,13 @@ PO_ORDER_REQUIRED_KEYS = (
 )
 
 PO_ORDER_OPTIONAL_KEYS = (
-    "chinesepm", # 中文品名
-    "englishpm", # 英文品名
-    "shipper",   # 发货人信息
-    "consignee", # 收货人信息
+    "chinesepm",       # 中文品名
+    "englishpm",       # 英文品名
+    "shipper",         # 发货人信息
+    "consignee",       # 收货人信息
+    # 预报尺寸备注：原文照抽；只有单个「长*宽*高」算正常，其余由
+    # collector/dimension_remark_guard 判定后转人工核对
+    "ybvolumeremark",
 )
 
 PO_ORDER_KEYS = PO_ORDER_REQUIRED_KEYS + PO_ORDER_OPTIONAL_KEYS

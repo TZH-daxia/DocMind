@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-flash"
     deepseek_temperature: float = 0.0
     deepseek_timeout_seconds: float = 240.0
+    # 连接建立（TCP/TLS 握手）的超时（秒）：与读响应分开算，握手 10s 还没完成
+    # 基本就是网络断了，不必陪等满整个调用上限；正常连接建立远小于 1s
+    deepseek_connect_timeout_seconds: float = 10.0
     deepseek_max_retries: int = 1
     # 字段抽取是否开启 thinking：开启后候选更稳，但单次耗时 8s → 95s 且随推理
     # token 数大幅波动
@@ -58,6 +61,24 @@ class Settings(BaseSettings):
     # 图片识别（read_images_with_vlm）是否开启 thinking：关闭后逐字转写会漏字、
     # 串语言（如英文被改写成德文），因此与抽取保持一致默认开启
     deepseek_vision_thinking: bool = False
+
+    # —— 每次模型调用的超时与重试（统一走 app/agent/model_call.call_with_retry）——
+    # 单次调用的**墙钟**硬超时（秒）。openai SDK 的 timeout 只是单次 HTTP 的
+    # connect/read 超时，上游异常时只要连接上还有零星流量就永不触发，调用会无限
+    # 挂起（表现为任务一直"正在解析中"），所以这里用 wait_for 兜底。
+    # 阈值按历史节点耗时定（p90 / max）：VLM 9.4s / 26.4s、抽取 8.7s / 84.1s，
+    # 留 2 倍以上余量；抽取开了 thinking（见上）波动大，因此单独放宽。
+    model_vision_timeout_seconds: float = Field(
+        default=60.0, validation_alias="DOCMIND_MODEL_VISION_TIMEOUT_SECONDS"
+    )
+    model_extract_timeout_seconds: float = Field(
+        default=180.0, validation_alias="DOCMIND_MODEL_EXTRACT_TIMEOUT_SECONDS"
+    )
+    # 每次调用的重试次数（总尝试次数 = 1 + 本值）。重试耗尽即判任务失败并回给
+    # 前端 MODEL_TIMEOUT 文案，不再无限等待
+    model_call_retries: int = Field(
+        default=2, validation_alias="DOCMIND_MODEL_CALL_RETRIES"
+    )
 
     docmind_data_root: Path = Field(default=Path("data"), validation_alias="DOCMIND_DATA_ROOT")
     # 港口主数据接口（poOrder PublicWebApi）根地址，如 http://<host>/PublicWebApi/；

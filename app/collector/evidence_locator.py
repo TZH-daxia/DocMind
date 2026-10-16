@@ -12,6 +12,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 
@@ -259,14 +260,125 @@ class DocumentTextIndex:
     def _normalize_box(
         box: tuple[float, float, float, float], width: float, height: float
     ) -> tuple[float, float, float, float]:
-        if width <= 0 or height <= 0:
-            return (0.0, 0.0, 0.0, 0.0)
-        return (
-            round(box[0] / width, 4),
-            round(box[1] / height, 4),
-            round((box[2] - box[0]) / width, 4),
-            round((box[3] - box[1]) / height, 4),
-        )
+        return normalize_box(box, width, height)
+
+
+def normalize_box(
+    box: tuple[float, float, float, float], width: float, height: float
+) -> tuple[float, float, float, float]:
+    """绝对矩形 [x0, y0, x1, y1] → 归一化 [x, y, w, h]（0~1，相对页面宽高）。
+
+    与字段高亮框同一口径：与页面图片的渲染分辨率无关，前端按百分比叠加即可对齐。
+    """
+
+    if width <= 0 or height <= 0:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (
+        round(box[0] / width, 4),
+        round(box[1] / height, 4),
+        round((box[2] - box[0]) / width, 4),
+        round((box[3] - box[1]) / height, 4),
+    )
+
+
+# 渲染图片名里的页码：`<stem>_page_003.png` → 3。近空白页会在渲染阶段被丢掉，
+# 于是图片序号与 PDF 页码不再一致，只能以文件名里的页码为准
+_PAGE_IMAGE_PATTERN = re.compile(r"_page_(\d+)\.png$", re.IGNORECASE)
+
+
+def pdf_page_number_from_image(image_name: str) -> int | None:
+    """从渲染图片名解析源 PDF 页码；解析不到（如 XLS 合成图 `_sheet_001.png`）返回 None。"""
+
+    matched = _PAGE_IMAGE_PATTERN.search(str(image_name or ""))
+    return int(matched.group(1)) if matched else None
+
+
+def extract_page_lines(pdf_path: Path, page_no: int) -> list[dict[str, Any]]:
+    """抽取某一页的文本层，按行合并为 `[{text, bbox}]`（bbox 归一化 0~1）。
+
+    供前端在原件图片上叠加一层透明、可划选复制的文字层（PDF.js 的 textLayer 思路）。
+    逐词取坐标后按 `(block_no, line_no)` 归行，行内按 x 排序、按经验补空格：
+    CJK 词之间间隔极小，一律补空格会把中文切开（复制出来多出空格），
+    所以只在间隔明显大于字高时才补。
+
+    扫描件/图片型托书没有文本层，返回空列表（调用方据此回 `available=False`）。
+    """
+
+    if page_no < 1:
+        return []
+    try:
+        with pymupdf.open(pdf_path) as document:
+            if page_no > document.page_count:
+                return []
+            page = document[page_no - 1]
+            rect = page.rect
+            if rect.width <= 0 or rect.height <= 0:
+                return []
+            words = [word for word in page.get_text("words") if str(word[4]).strip()]
+    except (OSError, RuntimeError, ValueError):
+        # PDF 损坏/加密等：按"没有文本层"处理，不让预览因此报错
+        logger.warning("文本层抽取失败：%s 第 %s 页", Path(pdf_path).name, page_no)
+        return []
+
+    if not words:
+        return []
+
+    lines: list[dict[str, Any]] = []
+    bucket: list[tuple] = []
+    current_key: tuple[int, int] | None = None
+    for word in sorted(words, key=lambda item: (item[5], item[6], item[7])):
+        key = (int(word[5]), int(word[6]))
+        if current_key is not None and key != current_key:
+            _append_line(lines, bucket, rect.width, rect.height)
+            bucket = []
+        current_key = key
+        bucket.append(word)
+    _append_line(lines, bucket, rect.width, rect.height)
+    return lines
+
+
+def _char_advance(word: tuple) -> float:
+    """一个词的平均字符步进（词框宽 / 字符数），用作"这里本来有没有空格"的基准。"""
+
+    text = str(word[4]).strip()
+    width = float(word[2]) - float(word[0])
+    return width / max(len(text), 1)
+
+
+def _append_line(
+    lines: list[dict[str, Any]],
+    words: list[tuple],
+    width: float,
+    height: float,
+) -> None:
+    """把一个行分组写成 `{text, bbox}`，行内按 word_no / x 排序并判断词间是否补空格。"""
+
+    if not words:
+        return
+
+    ordered = sorted(words, key=lambda item: (item[7], item[0]))
+    first = ordered[0]
+    text = str(first[4]).strip()
+    previous = first
+    for word in ordered[1:]:
+        gap = float(word[0]) - float(previous[2])
+        # 是否补空格：与"单词自身平均字宽"比，而不是与字高比 ——
+        # 词框高度含升降部（12pt 字号约 16.5pt），拿它当基准会把真实的词间空格
+        # 判成"挨着"（实测空格宽 3.3pt < 16.5×0.25）。字宽基准下，
+        # 拉丁词之间（空格约 0.4 倍字宽）会补空格，而 CJK 字符之间（间隔近 0）不会。
+        threshold = max(0.3, 0.25 * max(_char_advance(previous), _char_advance(word)))
+        if gap > threshold:
+            text += " "
+        text += str(word[4]).strip()
+        previous = word
+
+    box = (
+        min(float(word[0]) for word in ordered),
+        min(float(word[1]) for word in ordered),
+        max(float(word[2]) for word in ordered),
+        max(float(word[3]) for word in ordered),
+    )
+    lines.append({"text": text, "bbox": list(normalize_box(box, width, height))})
 
 
 def resolve_source_pdf(

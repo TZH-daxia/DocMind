@@ -3,13 +3,17 @@
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from app.collector.evidence_locator import (
     DocumentTextIndex,
     LocatedBox,
     context_needles,
+    extract_page_lines,
+    pdf_page_number_from_image,
     resolve_source_pdf,
 )
+from app.config import Settings
 from app.schemas.analysis import Evidence, FieldMetadata
 from app.service.analysis_service import AnalysisService
 
@@ -472,3 +476,114 @@ def test_locate_returns_nothing_without_text_layer(tmp_path: Path) -> None:
     }
 
     assert AnalysisService._locate_in_document(pdf, field_meta, ["sfg"]) == {}
+
+
+# ---------- 文本层（前端在原件图片上划选复制） ----------
+
+
+def test_extract_page_lines_joins_words_of_same_line(tmp_path: Path) -> None:
+    """同一行的词连成一行（间隔够宽才补空格），坐标归一化到 0~1。"""
+
+    pdf = build_pdf(
+        tmp_path / "doc.pdf",
+        [(50, 100, "SHANGHAI CHINA"), (50, 300, "FRANKFURT")],
+    )
+
+    lines = extract_page_lines(pdf, 1)
+
+    texts = [line["text"] for line in lines]
+    assert "SHANGHAI CHINA" in texts
+    assert "FRANKFURT" in texts
+
+    shanghai = next(line for line in lines if "SHANGHAI" in line["text"])
+    frankfurt = next(line for line in lines if "FRANKFURT" in line["text"])
+    for box in (shanghai["bbox"], frankfurt["bbox"]):
+        assert 0 <= box[0] < 1 and 0 <= box[1] < 1
+        assert 0 < box[2] < 1 and 0 < box[3] < 1
+    assert shanghai["bbox"][1] < frankfurt["bbox"][1]
+
+
+def test_extract_page_lines_empty_without_text_layer(tmp_path: Path) -> None:
+    """扫描件（无文本层）与非法页码都返回空列表，调用方据此回 available=False。"""
+
+    pdf = build_image_only_pdf(tmp_path / "scan.pdf")
+
+    assert extract_page_lines(pdf, 1) == []
+    assert extract_page_lines(pdf, 0) == []
+
+
+def test_pdf_page_number_from_image_parses_render_name() -> None:
+    """页码取渲染图文件名（近空白页被丢掉后，图片序号与 PDF 页码不再一致）。"""
+
+    assert pdf_page_number_from_image("托书_page_003.png") == 3
+    # XLS 纯 Python 合成图没有对应 PDF 页
+    assert pdf_page_number_from_image("托书_sheet_001.png") is None
+
+
+def build_service(tmp_path: Path) -> AnalysisService:
+    return AnalysisService(
+        Settings(DOCMIND_DATA_ROOT=tmp_path, deepseek_api_key="test-key")
+    )
+
+
+def seed_task_with_page(service: AnalysisService, task_id: str, image_name: str) -> None:
+    """造出任务状态 + render_meta，并把上传原件放成一份可解析的 PDF。"""
+
+    stem = service.file_store.source_stem("托书.pdf")
+    upload = service.file_store.root / "uploaded_documents" / "托书.pdf"
+    upload.parent.mkdir(parents=True, exist_ok=True)
+    build_pdf(upload, [(50, 100, "SHANGHAI CHINA")])
+
+    parsed_dir = service.file_store.task_dir("parsed_documents", task_id)
+    service.file_store.write_json_atomic(
+        parsed_dir / f"{stem}_render_meta.json",
+        {
+            "converter": "pymupdf",
+            "page_count": 1,
+            "images": [image_name],
+            # 做过字体重绘时要把标记透给前端（原文本层坐标可能与图片有出入）
+            "font_repair": {"status": "repaired", "repaired_pages": 1},
+        },
+    )
+    service.file_store.write_json_atomic(
+        service.file_store.task_status_path(task_id),
+        {
+            "task_id": task_id,
+            "status": "needs_review",
+            "original_name": "托书.pdf",
+            "uploaded_path": "uploaded_documents/托书.pdf",
+        },
+    )
+
+
+def test_get_page_text_layer_returns_lines(tmp_path: Path) -> None:
+    service = build_service(tmp_path)
+    seed_task_with_page(service, "task_text", "托书_page_001.png")
+
+    payload = service.get_page_text_layer("task_text", 1)
+
+    assert payload["available"] is True
+    assert payload["pdf_page"] == 1
+    assert payload["font_repaired"] is True
+    assert any("SHANGHAI" in item["text"] for item in payload["items"])
+
+
+def test_get_page_text_layer_unavailable_for_synthetic_page(tmp_path: Path) -> None:
+    """XLS 合成图没有源 PDF：available=False，接口本身不报错。"""
+
+    service = build_service(tmp_path)
+    seed_task_with_page(service, "task_sheet", "托书_sheet_001.png")
+
+    payload = service.get_page_text_layer("task_sheet", 1)
+
+    assert payload["available"] is False
+    assert payload["pdf_page"] is None
+    assert payload["items"] == []
+
+
+def test_get_page_text_layer_rejects_unknown_page(tmp_path: Path) -> None:
+    service = build_service(tmp_path)
+    seed_task_with_page(service, "task_page", "托书_page_001.png")
+
+    with pytest.raises(FileNotFoundError):
+        service.get_page_text_layer("task_page", 2)

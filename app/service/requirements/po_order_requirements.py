@@ -4,7 +4,7 @@ from app.schemas.po_order import PO_ORDER_REQUIRED_KEYS
 
 
 class PoOrderRequirementService:
-    """最终输出固定为 12 个字段，不再按进口/出口/国内区分必填。"""
+    """最终输出固定为 13 个字段，不再按进口/出口/国内区分必填。"""
 
     def __init__(self) -> None:
         self.required_keys: tuple[str, ...] = PO_ORDER_REQUIRED_KEYS

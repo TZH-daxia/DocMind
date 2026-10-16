@@ -97,7 +97,7 @@ class ExtractedField(BaseModel):
 
 
 class PoOrderExtraction(BaseModel):
-    """DeepSeek 结构化抽取结果：12 个字段全部必填。
+    """DeepSeek 结构化抽取结果：13 个字段全部必填。
 
     字段缺失由 schema 默认填 None / needs_review，从结构上杜绝“模型漏输出字段”。
     description 随 JSON schema 下发，帮助模型理解每个字段含义。
@@ -119,6 +119,9 @@ class PoOrderExtraction(BaseModel):
     consignee: ExtractedField = Field(description="收货人（name/address/phone/email）")
     chinesepm: ExtractedField = Field(description="中文品名")
     englishpm: ExtractedField = Field(description="英文品名")
+    ybvolumeremark: ExtractedField = Field(
+        description="预报尺寸备注（原文尺寸信息；只有单个「长*宽*高」算正常）"
+    )
 
 
 class EvidenceLocation(BaseModel):

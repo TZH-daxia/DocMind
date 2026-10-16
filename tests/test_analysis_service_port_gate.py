@@ -263,6 +263,7 @@ async def test_result_and_review_fields_follow_output_order(tmp_path: Path) -> N
         "englishpm",
         "shipper",
         "consignee",
+        "ybvolumeremark",
     ]
     assert list(output["field_meta"])[:3] == ["fid", "sfg", "mdg"]
     assert output["review_fields"] == [

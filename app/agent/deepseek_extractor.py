@@ -12,6 +12,8 @@ from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr, ValidationError
 
+import httpx
+
 from app.config import Settings
 from app.schemas.analysis import (
     Evidence,
@@ -31,7 +33,7 @@ class EmptyExtractionError(RuntimeError):
     """模型未产出任何有效字段候选。
 
     典型场景：模型返回空对象、或把结果包了一层（`{"result": {...}}`），此时
-    `_parse_flat` 会把它们静默解析成 12 个 missing 候选，历史上表现为"任务成功
+    `_parse_flat` 会把它们静默解析成 13 个 missing 候选，历史上表现为"任务成功
     但结果全空"。抛出本异常后由调用方决定重试或显式标记失败，不再给用户一份
     看似正常的空结果。
     """
@@ -53,7 +55,7 @@ HUMAN_PROMPT_TEMPLATE = """请仅依据下面的视觉理解文档抽取订单�
 
 # 结构化抽取专用 human 模板：强调“逐字段填写”，输出形状由 PoOrderExtraction 强制，
 # 不再要求模型手写 JSON 信封，避免其漏输出字段。
-STRUCTURED_HUMAN_TEMPLATE = """请仅依据下面的视觉理解文档，为下列 12 个订单字段逐一填写提取值。
+STRUCTURED_HUMAN_TEMPLATE = """请仅依据下面的视觉理解文档，为下列 13 个订单字段逐一填写提取值。
 
 订单上下文：
 {order_context}
@@ -62,7 +64,7 @@ STRUCTURED_HUMAN_TEMPLATE = """请仅依据下面的视觉理解文档，为下�
 {vlm_image_content}
 
 要求：
-- 输出结构已由系统强制约定（共 12 个字段），每个字段都必须出现，禁止遗漏；
+- 输出结构已由系统强制约定（共 13 个字段），每个字段都必须出现，禁止遗漏；
 - 文档没有明确文字依据的字段：value 填 null、status 填 "missing"；
 - 文档中标注“无法确认”的段落一律不要生成值；
 - 每个字段的 evidence 必须是逐字引用视觉理解文档的原文片段字符串列表；
@@ -85,12 +87,20 @@ class DeepSeekExtractionAgent:
         if not settings.deepseek_api_key:
             raise ValueError("DEEPSEEK_API_KEY is required")
         self.settings = settings
+        # 连接建立与读响应分开超时：TCP/TLS 握手 10s 还没完成基本就是网络断了，
+        # 没必要陪着等满整个调用上限（正常连接建立远小于 1s，不影响正常任务）。
+        # 读响应仍是 deepseek_timeout_seconds；真正的调用上限由
+        # call_with_retry 的墙钟超时兜底（墙钟更短，先生效）
+        http_timeout = httpx.Timeout(
+            settings.deepseek_timeout_seconds,
+            connect=settings.deepseek_connect_timeout_seconds,
+        )
         self.model = ChatOpenAI(
             api_key=SecretStr(settings.deepseek_api_key),
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             temperature=settings.deepseek_temperature,
-            timeout=settings.deepseek_timeout_seconds,
+            timeout=http_timeout,
             max_retries=settings.deepseek_max_retries,
             extra_body={
                 "thinking": {
@@ -104,7 +114,7 @@ class DeepSeekExtractionAgent:
             base_url=settings.deepseek_base_url,
             model=settings.deepseek_model,
             temperature=settings.deepseek_temperature,
-            timeout=settings.deepseek_timeout_seconds,
+            timeout=http_timeout,
             max_retries=settings.deepseek_max_retries,
             extra_body={
                 "thinking": {
@@ -115,11 +125,12 @@ class DeepSeekExtractionAgent:
             },
         )
         self.output_parser = None
-        # 扁平 12 键模板：明确要求模型逐个字段填写，缺一不可（弱模型也能按骨架填充）。
+        # 扁平键模板：明确要求模型逐个字段填写，缺一不可（弱模型也能按骨架填充）。
+        # 键名清单从 PO_ORDER_KEYS 生成，避免加字段时这里忘了同步
         self._format_instructions = (
-            "输出必须是合法 JSON 对象，顶层键为以下 12 个字段名（一个都不能少）："
-            "sfg, mdg, ybpiece, ybweight, ybvolume, inwageallinprice, hbrq, fid, "
-            "shipper, consignee, chinesepm, englishpm。"
+            f"输出必须是合法 JSON 对象，顶层键为以下 {len(PO_ORDER_KEYS)} 个字段名（一个都不能少）："
+            + ", ".join(PO_ORDER_KEYS)
+            + "。"
             "每个键的值都是一个对象："
             '{"value": <提取值或 null>, "status": "normalized"|"missing"|"needs_review"|..., '
             '"confidence": 0.0~1.0, "evidence": [{"quote": "..."}]}。'
@@ -137,7 +148,7 @@ class DeepSeekExtractionAgent:
             | self.model
             | StrOutputParser()
         )
-        # 结构化抽取链：用 PoOrderExtraction 的 schema 经 Tool Calls 约束 12 字段。
+        # 结构化抽取链：用 PoOrderExtraction 的 schema 经 Tool Calls 约束 13 字段。
         # 1) DeepSeek 的 response_format 只支持 text / json_object，不支持 OpenAI 的
         #    json_schema，因此只能用 function_calling；
         # 2) 必须显式传 tool_choice="auto"：langchain 默认会绑定具名 tool_choice，
@@ -212,7 +223,7 @@ class DeepSeekExtractionAgent:
             "format_instructions": self._format_instructions,
             "image_messages": [],
         }
-        # 1) 优先结构化输出：schema 硬约束 12 字段必填，从根上杜绝漏字段。
+        # 1) 优先结构化输出：schema 硬约束 13 字段必填，从根上杜绝漏字段。
         if self.structured_chain is not None:
             try:
                 result = await self.structured_chain.ainvoke(variables)
@@ -225,7 +236,7 @@ class DeepSeekExtractionAgent:
                 # 结构化长期不可用时（如 thinking 与 response_format 不兼容）这里
                 # 每次都会命中，提升到 warning 才能在默认 INFO 下看见真实链路。
                 logger.warning("结构化抽取失败，回退 free-form：%s", exc)
-        # 2) 回退 free-form：解析模型文本输出（扁平 12 键或旧式信封）。
+        # 2) 回退 free-form：解析模型文本输出（扁平 13 键或旧式信封）。
         #    空结果（合法 JSON 但无任何字段）与解析失败同等对待：最多重试一次，
         #    仍无字段则抛 EmptyExtractionError，避免静默产出全空结果。
         last_error: Exception | None = None
@@ -261,7 +272,7 @@ class DeepSeekExtractionAgent:
 
     @staticmethod
     def _schema_to_candidates(result: PoOrderExtraction) -> list[FieldCandidate]:
-        """把结构化抽取结果（12 字段）转换为下游通用的 list[FieldCandidate]。"""
+        """把结构化抽取结果（13 字段）转换为下游通用的 list[FieldCandidate]。"""
 
         candidates: list[FieldCandidate] = []
         for key in PO_ORDER_KEYS:
@@ -331,9 +342,9 @@ class DeepSeekExtractionAgent:
     def _parse_candidates(text: str) -> list[FieldCandidate]:
         """将模型文本输出容错解析为字段候选（容忍代码块与前后缀文字）。
 
-        支持两种结构：扁平 12 键对象（推荐）与旧式 {"candidates": [...]} 信封。
+        支持两种结构：扁平 13 键对象（推荐）与旧式 {"candidates": [...]} 信封。
         输出里连一个订单字段都没有时（空对象、包装层未识别）直接判为解析失败，
-        交由调用方重试——否则 _parse_flat 会静默产出 12 个 missing 候选。
+        交由调用方重试——否则 _parse_flat 会静默产出 13 个 missing 候选。
         """
 
         payload = DeepSeekExtractionAgent._unwrap_payload(
@@ -359,7 +370,7 @@ class DeepSeekExtractionAgent:
 
     @staticmethod
     def _parse_flat(payload: dict[str, Any]) -> list[FieldCandidate]:
-        """解析扁平 12 键对象：每个键的值是一个字段提取值对象。"""
+        """解析扁平 13 键对象：每个键的值是一个字段提取值对象。"""
 
         candidates: list[FieldCandidate] = []
         for key in PO_ORDER_KEYS:
@@ -396,7 +407,7 @@ class DeepSeekExtractionAgent:
 
     @staticmethod
     def _ensure_all_fields(candidates: list[FieldCandidate]) -> list[FieldCandidate]:
-        """保证 12 个字段全部出现在候选列表中（模型漏输出的按 missing 补齐）。
+        """保证 13 个字段全部出现在候选列表中（模型漏输出的按 missing 补齐）。
 
         与模型能力无关：即使模型漏字段，下游 build_result 也能拿到完整结构。
         """

@@ -468,3 +468,26 @@ async def get_analysis_page_image(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="PAGE_NOT_FOUND") from exc
     return FileResponse(image_path, media_type="image/png")
+
+
+@router.get(
+    "/tasks/{task_id}/pages/{page_no}/text",
+    summary="获取页面文本层",
+    response_description="该页的逐行文字与归一化坐标，供前端叠加可划选复制的透明文字层",
+    responses={404: {"description": "任务或页面不存在（PAGE_NOT_FOUND）"}},
+)
+async def get_analysis_page_text(
+    task_id: Annotated[str, Path(description="任务 ID，由创建任务接口返回")],
+    page_no: Annotated[int, Path(description="页码，从 1 开始", ge=1)],
+    service: Annotated[AnalysisService, Depends(get_analysis_service)],
+) -> dict[str, Any]:
+    """返回任务指定页的文本层，用于在原件图片上叠加透明、可划选复制的文字层。
+
+    `available=False` 表示这页提不出文字（扫描件 / 图片型托书 / XLS 合成图兜底），
+    前端据此提示用户，而不是渲染一层空的文字层。
+    """
+
+    try:
+        return service.get_page_text_layer(task_id, page_no)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="PAGE_NOT_FOUND") from exc

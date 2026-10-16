@@ -14,6 +14,11 @@ from app.agent.deepseek_extractor import (
     EmptyExtractionError,
     ImageInput,
 )
+from app.agent.model_call import ModelCallFailedError, call_with_retry
+from app.collector.dimension_remark_guard import (
+    DIMENSION_REMARK_KEY,
+    is_standard_dimension_remark,
+)
 from app.collector.document_renderer import LocalDocumentRenderer
 from app.collector.document_type_guard import (
     MISMATCH_MESSAGE,
@@ -25,7 +30,9 @@ from app.collector.evidence_locator import (
     DocumentTextIndex,
     LocatedBox,
     context_needles,
+    extract_page_lines,
     normalize_needle,
+    pdf_page_number_from_image,
     quote_segments,
     resolve_source_pdf,
 )
@@ -81,9 +88,6 @@ VLM_REFUSAL_MARKERS = (
     "no image",
 )
 VLM_MIN_CONTENT_CHARS = 200
-VLM_MAX_ATTEMPTS = 3
-# VLM 拒答重试前的退避基数（第 n 次重试等待 n × 基数秒）
-VLM_RETRY_BACKOFF_SECONDS = 2.0
 # 失败事件文案：让事件时间线也能说清原因，未列举的错误码用兜底文案。
 # DOCUMENT_TYPE_MISMATCH（类型守卫提前拦下）与 EMPTY_EXTRACTION（守卫放过、模型又抽
 # 不出字段）对用户是同一件事——上传的不是空运托书，因此两种码共用同一套文案，避免
@@ -92,11 +96,13 @@ NOT_BOOKING_EVENT_MESSAGE = "文件不像空运托书，未识别到托书字段
 FAILURE_EVENT_MESSAGES: dict[str, str] = {
     "DOCUMENT_TYPE_MISMATCH": NOT_BOOKING_EVENT_MESSAGE,
     "EMPTY_EXTRACTION": NOT_BOOKING_EVENT_MESSAGE,
+    "MODEL_TIMEOUT": "识别服务响应超时，请稍后重试",
 }
 # 面向用户的失败说明：技术细节（异常原文）改放 error.detail，前端只展示这条
 FAILURE_USER_MESSAGES: dict[str, str] = {
     "DOCUMENT_TYPE_MISMATCH": MISMATCH_MESSAGE,
     "EMPTY_EXTRACTION": MISMATCH_MESSAGE,
+    "MODEL_TIMEOUT": "识别服务响应超时，请稍后重试",
 }
 # 港口归一化未能定论时的事件文案（按归一化服务给出的状态区分）
 PORT_REVIEW_MESSAGES: dict[str, str] = {
@@ -259,6 +265,32 @@ def _strip_party_name_aliases(
         updated = {**value, "name": cleaned}
         field_meta[field_key] = meta.model_copy(update={"value": updated})
         result[field_key] = updated
+
+
+def _apply_dimension_remark_guard(
+    field_meta: dict[str, FieldMetadata],
+    review_fields: set[str],
+) -> bool:
+    """预报尺寸备注（`ybvolumeremark`）的确定性判定：非标准写法一律转人工核对。
+
+    模型只负责按原文照抽，"是不是订单要的单个长*宽*高"由 dimension_remark_guard
+    的规则判（提示词之外的兜底：规则可枚举，交给代码判既稳定又能被测试锁住）。
+    这里只做**降级**——异常写法（多一段件数、非相乘、多个物品尺寸等）转
+    `needs_review`，值保留原文供操作员确认；标准写法不动它的状态。
+    值缺失（托书里本来就没有尺寸）不在此列，仍按 missing 处理。
+
+    返回是否发生了降级（供调用方记日志，也便于测试断言）。
+    """
+
+    meta = field_meta.get(DIMENSION_REMARK_KEY)
+    if meta is None or meta.value in (None, ""):
+        return False
+    if is_standard_dimension_remark(meta.value):
+        return False
+
+    field_meta[DIMENSION_REMARK_KEY] = meta.model_copy(update={"status": "needs_review"})
+    review_fields.add(DIMENSION_REMARK_KEY)
+    return True
 
 
 def _align_party_boxes(
@@ -650,6 +682,11 @@ class AnalysisService(WorkflowEventPublisher):
             # 模型没抽出任何字段：单独错误码，便于与渲染/网络类失败区分
             logger.error("Analysis task empty extraction: %s（%s）", task_id, exc)
             self._fail_task(task_id, exc, "EMPTY_EXTRACTION")
+        except ModelCallFailedError as exc:
+            # 模型调用反复超时/失败：单独错误码，前端据此给"识别服务超时"提示，
+            # 不退化成无差别的 ANALYSIS_FAILED
+            logger.error("Analysis task model call failed: %s（%s）", task_id, exc)
+            self._fail_task(task_id, exc, "MODEL_TIMEOUT")
         except Exception as exc:
             logger.exception("Analysis task failed: %s", task_id)
             self._fail_task(task_id, exc, "ANALYSIS_FAILED")
@@ -973,6 +1010,56 @@ class AnalysisService(WorkflowEventPublisher):
             raise FileNotFoundError(f"{task_id}#page_{page_no}")
         return image_path
 
+    def get_page_text_layer(self, task_id: str, page_no: int) -> dict[str, Any]:
+        """返回某页的文本层（逐行文字 + 归一化坐标），供前端叠加可划选复制的透明文字层。
+
+        坐标与字段高亮框同一口径（归一化 0~1，与图片分辨率无关），前端按百分比定位即可对齐。
+
+        `available=False` 表示这页提不出文字，前端据此提示而不渲染文字层：
+        - 扫描件 / 图片型托书：PDF 里本来就没有文本层；
+        - XLS 走纯 Python 合成图兜底：没有源 PDF（`resolve_source_pdf` 返回 None）；
+        - 渲染时做过字体重绘（`font_repair`）：文字内容仍然是好的，但原文本层的字宽
+          被上游声明错，坐标可能与图片有出入，故一并把 `font_repaired` 透给前端。
+        """
+
+        status = self.get_task_status(task_id)
+        source_stem = self.file_store.source_stem(status.get("original_name"))
+        task_directory = self.file_store.root / "parsed_documents" / task_id
+        metadata_path = task_directory / f"{source_stem}_render_meta.json"
+        if not metadata_path.exists():
+            raise FileNotFoundError(task_id)
+
+        metadata = self.file_store.read_json(metadata_path)
+        images = metadata.get("images") or []
+        if page_no < 1 or page_no > len(images):
+            raise FileNotFoundError(f"{task_id}#page_{page_no}")
+
+        payload: dict[str, Any] = {
+            "page": page_no,
+            "pdf_page": None,
+            "available": False,
+            "font_repaired": bool(metadata.get("font_repair")),
+            "items": [],
+        }
+
+        pdf_page_no = pdf_page_number_from_image(str(images[page_no - 1]))
+        if pdf_page_no is None:
+            return payload
+        payload["pdf_page"] = pdf_page_no
+
+        pdf_path = resolve_source_pdf(
+            self.file_store.root,
+            task_id,
+            status.get("uploaded_path"),
+            source_stem,
+        )
+        if pdf_path is None:
+            return payload
+
+        payload["items"] = extract_page_lines(pdf_path, pdf_page_no)
+        payload["available"] = bool(payload["items"])
+        return payload
+
     async def render_document(self, state: AnalysisState) -> dict[str, Any]:
         """本地渲染文档为页面图片与文本层（不经 MinerU）。"""
 
@@ -1019,28 +1106,19 @@ class AnalysisService(WorkflowEventPublisher):
         images = await asyncio.to_thread(
             self._load_images, state.get("image_paths", [])
         )
-        for attempt in range(1, VLM_MAX_ATTEMPTS + 1):
-            # 闸门只包住单次调用：退避等待时释放槽位，别让重试占着并发额度
-            async with self._gate("model", self.settings.model_max_concurrent):
-                vlm_content = await self.deepseek.describe_images(
-                    load_po_order_vision_prompt(),
-                    images,
-                )
-            if not self._is_vlm_refusal(vlm_content):
-                break
-            logger.warning(
-                "VLM 未返回有效视觉内容（第 %s/%s 次，长度 %s），准备重试",
-                attempt,
-                VLM_MAX_ATTEMPTS,
-                len(vlm_content),
-            )
-            if attempt < VLM_MAX_ATTEMPTS:
-                # 退避：并发拉高后上游更容易限流，重试前让出一点时间
-                await asyncio.sleep(VLM_RETRY_BACKOFF_SECONDS * attempt)
-        else:
-            raise RuntimeError(
-                f"VLM_VISION_UNAVAILABLE: 连续 {VLM_MAX_ATTEMPTS} 次未能获取图片视觉内容"
-            )
+        # 单次墙钟硬超时 + 按配置重试（含 VLM 拒答重试），次数与上限都由配置统一控制：
+        # 上游（DeepSeek）异常时不再依赖 SDK 的 read 超时，也不会无限挂着
+        vlm_content = await call_with_retry(
+            "VLM 图片识别",
+            lambda: self.deepseek.describe_images(
+                load_po_order_vision_prompt(),
+                images,
+            ),
+            timeout_seconds=self.settings.model_vision_timeout_seconds,
+            retries=self.settings.model_call_retries,
+            should_retry=self._is_vlm_refusal,
+            guard=lambda: self._gate("model", self.settings.model_max_concurrent),
+        )
         parsed_directory = Path(state["parsed"]["parsed_directory"])
         source_stem = self.file_store.source_stem(state["source_name"])
         vlm_path = parsed_directory / f"{source_stem}_vlm_image_content.md"
@@ -1081,24 +1159,34 @@ class AnalysisService(WorkflowEventPublisher):
                 details={"hit_groups": [], "content_hint": content_hint},
             )
             raise DocumentTypeMismatchError(MISMATCH_MESSAGE, hint=content_hint)
-        async with self._gate("model", self.settings.model_max_concurrent):
-            try:
-                model_candidates = await self.deepseek.extract(
+        try:
+            # 超时覆盖整个 extract()：内部含"结构化 → free-form 回退 → 空结果重试"，
+            # 外层墙钟兜底保证这一步总耗时可控，不再依赖 SDK 的 read 超时
+            model_candidates = await call_with_retry(
+                "字段抽取",
+                lambda: self.deepseek.extract(
                     system_prompt=load_po_order_extraction_prompt(),
                     vlm_image_content=vlm_image_content,
                     context=state["context"],
+                ),
+                timeout_seconds=self.settings.model_extract_timeout_seconds,
+                retries=self.settings.model_call_retries,
+                # 空结果是"模型正常返回但抽不出字段"，extract() 内部已重试过，
+                # 再重试只会拉长失败耗时，因此不重试直接上抛
+                fatal_exceptions=(EmptyExtractionError,),
+                guard=lambda: self._gate("model", self.settings.model_max_concurrent),
+            )
+        except EmptyExtractionError:
+            if len(vlm_image_content.strip()) < VLM_MIN_CONTENT_CHARS:
+                logger.warning(
+                    "VLM 视觉内容为空，抽取结果按空处理：task_id=%s", task_id
                 )
-            except EmptyExtractionError:
-                if len(vlm_image_content.strip()) < VLM_MIN_CONTENT_CHARS:
-                    logger.warning(
-                        "VLM 视觉内容为空，抽取结果按空处理：task_id=%s", task_id
-                    )
-                    model_candidates = [
-                        FieldCandidate(field_key=key, value=None, status="missing")
-                        for key in PO_ORDER_KEYS
-                    ]
-                else:
-                    raise
+                model_candidates = [
+                    FieldCandidate(field_key=key, value=None, status="missing")
+                    for key in PO_ORDER_KEYS
+                ]
+            else:
+                raise
         allowed_keys = set(PO_ORDER_KEYS)
         all_candidates = [
             candidate for candidate in model_candidates if candidate.field_key in allowed_keys
@@ -1167,6 +1255,10 @@ class AnalysisService(WorkflowEventPublisher):
                 evidence=best.evidence,
             )
             result[field_key] = best.value
+
+        # 预报尺寸备注：模型只负责照抽原文，"是不是单个标准长*宽*高"由确定性规则判（见下）
+        if _apply_dimension_remark_guard(field_meta, review_fields):
+            logger.info("预报尺寸备注写法非标准，已转人工核对：task_id=%s", task_id)
 
         # 必填字段缺失 → 标记待人工审核，绝不伪造值
         for required_key in required_keys:
