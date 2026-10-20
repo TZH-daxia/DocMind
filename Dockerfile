@@ -40,7 +40,12 @@ ENV PYTHONUNBUFFERED=1 \
     DOCMIND_SYSTEM_LOG_FILE=/app/logs/app.log \
     # soffice 需要一个可写的 HOME；配置目录已由 -env:UserInstallation 指到临时目录，这里兜底
     HOME=/home/docmind \
-    TZ=Asia/Shanghai
+    TZ=Asia/Shanghai \
+    # 中文 locale：决定 LibreOffice 的 LC_PAPER。默认 C.UTF-8 时它按 Letter
+    # （8.5×11in）分页，比 A4 短 18mm，同一张表更容易溢到下一页 —— 这是
+    # "线上页数比开发机多"的一个来源。下面 apt 阶段会 locale-gen 出这个 locale
+    LANG=zh_CN.UTF-8 \
+    LANGUAGE=zh_CN:zh
 
 # Debian 官方源在国内服务器可能很慢：构建时传 --build-arg APT_MIRROR=主机名 替换
 ARG APT_MIRROR=""
@@ -59,10 +64,21 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         python3-uno \
         fonts-wqy-zenhei \
         fonts-wqy-microhei \
+        fonts-arphic-uming \
+        fonts-arphic-ukai \
+        locales \
         ca-certificates \
         tzdata \
-    && rm -rf /var/lib/apt/lists/* \
-    && (command -v fc-cache >/dev/null && fc-cache -f || true)
+    && sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
+
+# 托书里普遍指定「宋体 / 仿宋 / 微软雅黑」等 Windows 字体，镜像里没有这些字体会让
+# fontconfig 退化到 DejaVu Sans 排版：拉丁度量比宋体宽，同一段文字换行变多、内容
+# 溢出到下一页，线上预览因此比开发机多出好几张图。下面这份别名把常见中文字体名
+# 映射到已安装的 AR PL UMing（宋体替代）与文泉驿（黑体替代），保证分页口径一致。
+COPY deploy/fontconfig/cjk-alias.conf /etc/fonts/conf.d/99-cjk-alias.conf
+RUN fc-cache -f
 
 # XLS 行高修正调用 LibreOffice 自带的 python（与 soffice 同级目录）；
 # Debian 未提供该入口时回退到系统 python3（uno 模块由 python3-uno 提供）

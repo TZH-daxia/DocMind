@@ -274,8 +274,13 @@ class LocalDocumentRenderer:
                             source_path, out_dir, stem
                         )
                     except (OSError, RuntimeError, subprocess.SubprocessError) as uno_error:
+                        # 回退后的差异会直接体现在页数上，所以把代价一并写进日志：
+                        # 普通转换会导出**整个工作簿的所有 sheet**，而 UNO 路径只导首表。
+                        # 线上预览"一份托书拆成好几张图"多数是这里退化了
                         logger.warning(
-                            "LibreOffice UNO 行高修正导出失败，回退普通转换：%s", uno_error
+                            "LibreOffice UNO 行高修正导出失败，回退普通转换"
+                            "（警告：回退会导出全部工作表且不修正合并行高，页数可能明显增多）：%s",
+                            uno_error,
                         )
                         pdf_path, converter = self._office_to_pdf_libreoffice(
                             source_path, out_dir, stem
@@ -317,6 +322,46 @@ class LocalDocumentRenderer:
             image_paths=image_paths,
             converter=converter,
             page_count=page_count,
+        )
+
+    def _resolve_lo_python(self, soffice: Path) -> Path:
+        """定位能 `import uno` 的 Python 解释器。
+
+        优先 LibreOffice 自带解释器（与 soffice 同目录），其次系统 python3
+        （Debian 的 uno 模块由 python3-uno 装进 dist-packages，系统 python3 可直接 import）。
+
+        **必须先 resolve()**：Linux 上 `shutil.which("soffice")` 拿到的是软链
+        `/usr/bin/soffice`，`Path.parent` 不跟随软链，会得到 `/usr/bin/python`
+        —— 而 Debian 12 根本没有 `/usr/bin/python`，于是 UNO 路径每次都抛
+        「未找到 LibreOffice 自带 Python」，静默降级到普通 `--convert-to pdf`。
+        降级的代价是：整个工作簿所有 sheet 都导出、合并单元格行高不再修正，
+        表现为线上预览把一份托书拆成好几张图（开发机是 Windows，soffice.exe
+        是真实文件，所以从来没暴露过这个差异）。
+        """
+
+        # Windows 上解释器是 python.exe，Linux 上没有扩展名
+        names = ("python.exe", "python") if os.name == "nt" else ("python",)
+        directories = (
+            # 软链已展开：/usr/lib/libreoffice/program（镜像里建的那个软链就在这）
+            soffice.resolve().parent,
+            # 未展开的兜底：Windows 安装目录 / 某些发行版的真实文件
+            soffice.parent,
+            # 发行版路径固定在 lib 目录下时直接找
+            Path("/usr/lib/libreoffice/program"),
+            Path("/usr/local/lib/libreoffice/program"),
+            Path("/opt/libreoffice/program"),
+        )
+        for directory in directories:
+            for name in names:
+                candidate = directory / name
+                if candidate.is_file():
+                    return candidate
+        system_python = shutil.which("python3")
+        if system_python:
+            return Path(system_python)
+        raise RuntimeError(
+            "LIBREOFFICE_UNO_UNAVAILABLE: 未找到可用于 UNO 的 Python 解释器"
+            f"（soffice={soffice}），请安装 python3-uno"
         )
 
     def _resolve_soffice_path(self) -> Path:
@@ -362,11 +407,7 @@ class LocalDocumentRenderer:
         """
 
         soffice = self._resolve_soffice_path()
-        lo_python = soffice.parent / ("python.exe" if os.name == "nt" else "python")
-        if not lo_python.is_file():
-            raise RuntimeError(
-                f"LIBREOFFICE_UNO_UNAVAILABLE: 未找到 LibreOffice 自带 Python：{lo_python}"
-            )
+        lo_python = self._resolve_lo_python(soffice)
         script_path = Path(__file__).with_name("lo_xls_height_fix.py")
         pdf_path = out_dir / f"{stem}_converted.pdf"
         self._remove_stale_lock(source_path)
