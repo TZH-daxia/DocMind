@@ -174,8 +174,37 @@ def _keep_primary_sheet(document: Any) -> Any:
     return primary
 
 
+def _fit_to_page_width(document: Any, sheet: Any, one_page_height: bool = False) -> None:
+    """把首表缩放成「一页宽」；`one_page_height` 为真时纵向也缩到一页。
+
+    托书是一整张表：列宽合计超过 A4 可打印宽度时，LibreOffice 会**按列横向切页**，
+    右半张（柜型 / 预付到付 / 体积 / 备注）落到下一张图上，而首页右侧直接被截断。
+    这种切法把同一张单据拆成两份残缺的表单，VLM 读首页时根本看不到那些列。
+
+    默认只锁宽度：`ScaleToPagesY = 0` 表示高度不限制，长表依旧可以纵向多页 ——
+    纵向分页不破坏语义（每页都是完整的列），横向切列才是致命的。
+
+    `one_page_height=True` 用于"表格只比可打印高度高出几毫米、末页只剩签名行"的情形：
+    调用方（渲染器）判定末页几乎空白后会带第 4 个参数重导一次，把整表压进一页。
+    """
+
+    styles = document.StyleFamilies.getByName("PageStyles")
+    style = styles.getByName(sheet.PageStyle)
+    # 三个属性成套设置；任一不被支持就整体放弃，避免只改一半导致缩放比例异常
+    settings = (
+        ("ScaleToPages", True),
+        ("ScaleToPagesX", 1),
+        ("ScaleToPagesY", 1 if one_page_height else 0),
+    )
+    for name, value in settings:
+        style.setPropertyValue(name, value)
+    print(f"fit to page: width=1 height={'1' if one_page_height else 'auto'}")
+
+
 def main() -> int:
     port, xls_path, pdf_path = sys.argv[1:4]
+    # 第 4 个参数为 "1" 表示纵向也缩到一页（渲染器判定"末页只剩签名行"时重导用）
+    one_page_height = len(sys.argv) > 4 and sys.argv[4] == "1"
     context = _connect(port)
     desktop = context.ServiceManager.createInstanceWithContext(
         "com.sun.star.frame.Desktop", context
@@ -202,6 +231,17 @@ def main() -> int:
         fixed = _fix_sheet(primary)
         print(f"kept sheet: {primary.Name}")
         print(f"fixed merged areas: {fixed}")
+        # 用途范围是判断"是不是被展开的隐藏列撑宽了"的唯一线索，排障时先看这行
+        cursor = primary.createCursor()
+        cursor.gotoEndOfUsedArea(False)
+        used = cursor.RangeAddress
+        print(f"used area: rows={used.EndRow + 1} cols={used.EndColumn + 1}")
+        # 横向切页会把一张表拆成左右两份残缺表单，必须先锁成一页宽；
+        # 个别版本不支持这几个属性时只告警、不阻断导出（纵向分页仍然可用）
+        try:
+            _fit_to_page_width(document, primary, one_page_height)
+        except Exception as fit_error:  # noqa: BLE001
+            print(f"FIT_TO_WIDTH_FAILED: {fit_error}", file=sys.stderr)
         document.storeToURL(
             uno.systemPathToFileUrl(os.path.abspath(pdf_path)),
             (_prop("FilterName", "calc_pdf_Export"),),

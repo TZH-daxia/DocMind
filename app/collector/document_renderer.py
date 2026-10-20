@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 MAX_PAGES = 10
 DPI = 200
 LIBREOFFICE_TIMEOUT_SECONDS = 180
+# 尾部溢出判定：末页非白像素占比低于该值，说明这一页只是签名/日期那一小条，
+# 属于"表格比可打印高度高出一点点"，可以整表缩放到一页
+TAIL_OVERFLOW_INK_RATIO = 0.05
+# 页数超过它就不再压缩：内容确实多，硬压会把字缩到看不清
+TAIL_OVERFLOW_MAX_PAGES = 2
 # XLS UNO 导出允许的重试次数：端口被抢占或 soffice 启动偶发失败时换端口重来，
 # 上限压到 2 次，避免真正的内容类失败被反复重试拖长整体耗时
 UNO_PORT_ATTEMPTS = 2
@@ -285,6 +290,30 @@ class LocalDocumentRenderer:
                         pdf_path, converter = self._office_to_pdf_libreoffice(
                             source_path, out_dir, stem
                         )
+                    else:
+                        # 表格比可打印高度高出一点点时，末页只剩签名/日期几条线：
+                        # 送 VLM 多一张 95% 空白的图，预览区看起来也像被切碎了。
+                        # 只在"确实只是尾巴"时重导一次，把整表压进一页；内容真多
+                        # （>2 页）则保持自然分页，避免把字压到看不清。
+                        ink = self._tail_overflow_ratio(pdf_path)
+                        if ink is not None and ink < TAIL_OVERFLOW_INK_RATIO:
+                            logger.info(
+                                "首表尾部溢出（末页非白占比 %.3f），整表缩放到一页：%s",
+                                ink,
+                                source_name,
+                            )
+                            try:
+                                pdf_path, converter = self._xls_to_pdf_libreoffice(
+                                    source_path, out_dir, stem, fit_height=True
+                                )
+                            except (
+                                OSError,
+                                RuntimeError,
+                                subprocess.SubprocessError,
+                            ) as fit_error:
+                                logger.warning(
+                                    "整表缩放到一页失败，沿用自然分页：%s", fit_error
+                                )
                 else:
                     pdf_path, converter = self._office_to_pdf_libreoffice(
                         source_path, out_dir, stem
@@ -399,11 +428,16 @@ class LocalDocumentRenderer:
         source_path: Path,
         out_dir: Path,
         stem: str,
+        *,
+        fit_height: bool = False,
     ) -> tuple[Path, str]:
         """XLS 专用：先经 UNO 修正合并单元格行高，再导出 PDF（保真主路径）。
 
         直接 --convert-to 导出时，高度不足的合并单元格内容会被裁切
         （与当年 COM 行高修正针对的问题相同），因此 XLS 走 UNO 流程。
+
+        `fit_height=True` 时额外要求纵向也缩到一页：用于"表格只比可打印高度
+        高出一点点、末页只剩签名行"的情形（判定见调用方的 `_tail_overflow_ratio`）。
         """
 
         soffice = self._resolve_soffice_path()
@@ -430,6 +464,7 @@ class LocalDocumentRenderer:
                     source_path=source_path,
                     pdf_path=pdf_path,
                     port=port,
+                    fit_height=fit_height,
                 )
             except RuntimeError as exc:
                 last_error = str(exc)
@@ -454,9 +489,16 @@ class LocalDocumentRenderer:
         source_path: Path,
         pdf_path: Path,
         port: int,
+        fit_height: bool = False,
     ) -> None:
-        """拉起一次 soffice 并经 UNO 导出 PDF，失败抛出 RuntimeError。"""
+        """拉起一次 soffice 并经 UNO 导出 PDF，失败抛出 RuntimeError。
 
+        `fit_height` 作为第 4 个参数传给脚本：`1` = 纵向也缩到一页，缺省不传 = 自然分页。
+        """
+
+        # 解释器选错时的报错是 "No module named 'uno'"，光看这句分不清是
+        # 「uno 没装」还是「挑到了 venv 里的 python」，所以每次都把路径记下来
+        logger.debug("UNO 导出使用解释器：%s", lo_python)
         profile_dir = Path(tempfile.mkdtemp(prefix="docmind_lo_"))
         process = subprocess.Popen(
             [
@@ -472,14 +514,17 @@ class LocalDocumentRenderer:
         )
         try:
             self._wait_for_port(port, timeout_seconds=60.0)
+            script_args = [
+                str(lo_python),
+                str(script_path),
+                str(port),
+                str(source_path),
+                str(pdf_path),
+            ]
+            if fit_height:
+                script_args.append("1")
             completed = subprocess.run(
-                [
-                    str(lo_python),
-                    str(script_path),
-                    str(port),
-                    str(source_path),
-                    str(pdf_path),
-                ],
+                script_args,
                 capture_output=True,
                 text=True,
                 # 子进程是 LibreOffice 自带 Python，实测它按系统区域编码写管道
@@ -492,7 +537,24 @@ class LocalDocumentRenderer:
             )
             if completed.returncode != 0 or not pdf_path.exists():
                 detail = (completed.stderr or completed.stdout or "").strip()
-                raise RuntimeError(f"LIBREOFFICE_UNO_FAILED: {detail}")
+                # 带上解释器路径：uno 模块只装在系统 python 上（Debian 的
+                # python3-uno 面向 /usr/bin/python3），若这里出现 venv 里的
+                # python3.12 就会报 "No module named 'uno'"，一眼可辨
+                raise RuntimeError(
+                    f"LIBREOFFICE_UNO_FAILED（解释器 {lo_python}）: {detail}"
+                )
+            # 成功时也把脚本输出记一行：里面带着「used area / fit to page width /
+            # fixed merged areas」，页数异常（尤其是被横向切成两张图）时先看这条，
+            # 不必再登服务器手工复现
+            script_output = (completed.stdout or "").strip()
+            if script_output:
+                logger.info(
+                    "UNO 导出 %s：%s",
+                    source_path.name,
+                    " | ".join(
+                        line.strip() for line in script_output.splitlines() if line.strip()
+                    ),
+                )
         finally:
             self._stop_soffice(process)
             shutil.rmtree(profile_dir, ignore_errors=True)
@@ -674,6 +736,36 @@ class LocalDocumentRenderer:
             len(target_pages),
         )
         return repair_info
+
+    def _tail_overflow_ratio(self, pdf_path: Path) -> float | None:
+        """末页的非白像素占比；不构成"尾部溢出"时返回 None。
+
+        托书表格常常只比可打印高度高出几毫米，于是最后一页只剩签名、日期、
+        手续费那几行。这种页送 VLM 等于多喂一张 95% 空白的图（占满 10 张名额），
+        预览区里也像"表单被切碎了"。判定条件：
+        - 只有 2 页（>2 页说明内容确实多，压缩会看不清，放弃）；
+        - 末页非白占比低于 TAIL_OVERFLOW_INK_RATIO。
+        """
+
+        try:
+            import pymupdf
+            from PIL import Image
+
+            with pymupdf.open(pdf_path) as document:
+                if document.page_count != TAIL_OVERFLOW_MAX_PAGES:
+                    return None
+                pixmap = document[-1].get_pixmap(dpi=72)
+                image = Image.frombytes(
+                    "RGB", (pixmap.width, pixmap.height), pixmap.samples
+                )
+                histogram = image.convert("L").histogram()
+        except Exception as error:  # noqa: BLE001 - 判定失败不该影响出图
+            logger.debug("尾部溢出判定失败，跳过压缩：%s", error)
+            return None
+        total = sum(histogram)
+        if total == 0:
+            return None
+        return sum(histogram[:250]) / total
 
     def _render_pages(
         self, pdf_path: Path, out_dir: Path, stem: str
